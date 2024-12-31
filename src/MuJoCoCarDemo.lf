@@ -20,7 +20,7 @@ main reactor(period: time = 33333333 ns, speed_sensitivity: double = 0.05, turn_
   state speed:double = 0;
   state turn:double = 0;
 
-  m = new MuJoCoCar(model_file = {= LF_SOURCE_DIRECTORY LF_FILE_SEPARATOR "models" LF_FILE_SEPARATOR "car.xml" =})
+  m = new MuJoCoCar()
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");

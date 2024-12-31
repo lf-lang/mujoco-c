@@ -18,7 +18,7 @@ import MuJoCoBase from "MujocoBase.lf"
  *
  * @author Edward A. Lee
  */
- reactor MuJoCoCar extends MuJoCoBase {
+ reactor MuJoCoCar(model_file:string = {= LF_SOURCE_DIRECTORY LF_FILE_SEPARATOR "models" LF_FILE_SEPARATOR "car.xml" =}) extends MuJoCoBase {
   input forward:double
   input turn:double
 
