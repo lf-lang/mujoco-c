@@ -1,0 +1,81 @@
+/**
+ * @file Reactor for the basic car demonstrator in MuJoCo.
+ */
+target C {
+  keepalive: true, // Because of physical action.
+}
+
+import MuJoCoBase from "MujocoBase.lf"
+
+/**
+ * @brief Model of a two-wheeled steerable vehicle.
+ *
+ * See [README.md](../README.md) for prerequisites and installation instructions.
+ *
+ * This reactor wraps the basic car demonstration model distributed with MuJoCo.
+ * It provides inputs to control the two actuators defined in the [XML model file](../models/car.xml)
+ * and outputs that report the sensor data from said model.
+ *
+ * @author Edward A. Lee
+ */
+ reactor MuJoCoCar extends MuJoCoBase {
+  input forward:double
+  input turn:double
+
+  output right_force:double
+  output left_force:double
+
+  // Actuator indexes.
+  state forward_index: int = 0
+  state turn_index: int = 0
+  // Sensor addresses
+  state right_address: int = 0
+  state left_address: int = 0
+
+  reaction(startup) {=
+    // Get actuator indexes.
+    self->forward_index = mj_name2id(self->context.m, mjOBJ_ACTUATOR, "forward");
+    self->turn_index = mj_name2id(self->context.m, mjOBJ_ACTUATOR, "turn");
+
+    // Get sensor indexes.
+    int right_index = mj_name2id(self->context.m, mjOBJ_SENSOR, "right");
+    int left_index = mj_name2id(self->context.m, mjOBJ_SENSOR, "left");
+
+    // Check validity.
+    if (self->forward_index < 0 || self->turn_index < 0 || right_index < 0 || left_index < 0) {
+      lf_print_error("Mismatched model file. Missing sensors or actuators.");
+      lf_request_stop();
+    }
+
+    // Get addresses and dimensions.
+    self->right_address = self->context.m->sensor_adr[right_index];
+    int right_dim = self->context.m->sensor_dim[right_index];
+    self->left_address = self->context.m->sensor_adr[left_index];
+    int left_dim = self->context.m->sensor_dim[left_index];
+
+    // Check validity.
+    if (right_dim != 1 || left_dim != 1) {
+      lf_print_error("Mismatched model file. Expected sensors of dimension 1.");
+      lf_request_stop();
+    }
+  =}
+
+  reaction(restart) {=
+    self->context.d->ctrl[self->forward_index] = 0.0;
+    self->context.d->ctrl[self->turn_index] = 0.0;
+  =}
+
+  reaction(forward) {=
+    self->context.d->ctrl[self->forward_index] = forward->value;
+  =}
+
+  reaction(turn) {=
+    self->context.d->ctrl[self->turn_index] = turn->value;
+  =}
+
+  reaction(advance) -> right_force, left_force {=
+    // Output sensor data.
+    lf_set(right_force, self->context.d->sensordata[self->right_address]);
+    lf_set(left_force, self->context.d->sensordata[self->left_address]);
+  =}
+}

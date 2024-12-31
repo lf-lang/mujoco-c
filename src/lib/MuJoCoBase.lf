@@ -1,0 +1,271 @@
+/**
+ * @file Base class for reactors using the MuJoCo physics-based simulation framework.
+ */
+target C {
+  keepalive: true, // Because of physical action.
+  cmake-include: "../include/mujoco.cmake"
+}
+
+preamble {=
+  #ifndef MUJOCO_H
+  #define MUJOCO_H
+  #include <stdio.h>
+  #include <string.h>
+
+  #include <GLFW/glfw3.h>
+  #include <mujoco/mujoco.h>
+
+  // Structure for each instance of this reactor.
+  typedef struct {
+    mjModel* m;           // MuJoCo model
+    mjData* d;            // MuJoCo data
+    mjvCamera cam;        // Camera
+    mjvOption opt;        // Visualization options
+    mjvScene scn;         // Scene
+    mjrContext con;       // GPU context
+
+    // State variables keeping track of mouse state:
+    bool button_left;
+    bool button_middle;
+    bool button_right;
+    double lastx;
+    double lasty;
+
+    // Actions to asynchronously produce outputs.
+    void* keypress;
+  } mujoco_instance_t;
+
+  typedef struct {
+    int key;
+    int scancode;
+    int act;
+    int mods;
+  } keypress_t;
+
+  #endif // MUJOCO_H
+=}
+
+/**
+ * @brief MuJoCo simulation with visualization.
+ *
+ * See [README.md](../README.md) for prerequisites and installation instructions.
+ *
+ * Upon startup, this reactor reads the specified `model_file` and opens a window displaying it.
+ * Upon receiving a true-valued `advance` input, the simulation advances to the logical time of that input.
+ *
+ * Each time an `advance` input is received, this reactor checks for keyboard inputs, and if there are
+ * any, schedules a physical action to produce the keyboard input information on the `key` output port.
+ *
+ * This reactor handles some basic manipulations of the visualization:
+ *
+ * - Mouse scroll: Zoom in and out.
+ * - Left mouse press and move: Rotate the view.
+ * - Right mouse press and move: Shift the view up and down. Hold the shift key for in and out.
+ *
+ * This code is based on basic.cc from the [MuJoCo distribution](https://mujoco.com), which is licensed
+ * under the Apache License, Version 2.0 (the "License"), http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * @author Edward A. Lee
+ */
+reactor MuJoCoBase(
+  model_file: string = {= LF_SOURCE_DIRECTORY LF_FILE_SEPARATOR "models" LF_FILE_SEPARATOR "hello.xml" =}
+) {
+
+  preamble {=
+    // keyboard callback schedules a physical action to produce an output.
+    void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
+      mujoco_instance_t* c = (mujoco_instance_t*)glfwGetWindowUserPointer(window); // Context.
+      keypress_t keypress;
+      keypress.key = key;
+      keypress.scancode = scancode;
+      keypress.act = act;
+      keypress.mods = mods;
+      lf_schedule_copy(c->keypress, 0, &keypress, 1);
+    }
+
+    // mouse button callback
+    void mouse_button(GLFWwindow* window, int button, int act, int mods) {
+      mujoco_instance_t* c = (mujoco_instance_t*)glfwGetWindowUserPointer(window); // Context.
+
+      // Record the button state.
+      c->button_left = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)==GLFW_PRESS);
+      c->button_middle = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE)==GLFW_PRESS);
+      c->button_right = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT)==GLFW_PRESS);
+
+      // Record the mouse position.
+      glfwGetCursorPos(window, &c->lastx, &c->lasty);
+    }
+
+    // mouse move callback
+    void mouse_move(GLFWwindow* window, double xpos, double ypos) {
+      mujoco_instance_t* c = (mujoco_instance_t*)glfwGetWindowUserPointer(window); // Context.
+
+      // no buttons down: nothing to do
+      if (!c->button_left && !c->button_middle && !c->button_right) {
+        return;
+      }
+
+      // compute mouse displacement, save
+      double dx = xpos - c->lastx;
+      double dy = ypos - c->lasty;
+      c->lastx = xpos;
+      c->lasty = ypos;
+
+      // get current window size
+      int width, height;
+      glfwGetWindowSize(window, &width, &height);
+
+      // get shift key state
+      bool mod_shift = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)==GLFW_PRESS ||
+                        glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT)==GLFW_PRESS);
+
+      // determine action based on mouse button
+      mjtMouse action;
+      if (c->button_right) {
+        action = mod_shift ? mjMOUSE_MOVE_H : mjMOUSE_MOVE_V;
+      } else if (c->button_left) {
+        action = mod_shift ? mjMOUSE_ROTATE_H : mjMOUSE_ROTATE_V;
+      } else {
+        action = mjMOUSE_ZOOM;
+      }
+
+      // move camera
+      mjv_moveCamera(c->m, action, dx/height, dy/height, &c->scn, &c->cam);
+    }
+
+    // scroll callback
+    void scroll(GLFWwindow* window, double xoffset, double yoffset) {
+      mujoco_instance_t* c = (mujoco_instance_t*)glfwGetWindowUserPointer(window); // Context.
+
+      // emulate vertical mouse motion = 5% of window height
+      mjv_moveCamera(c->m, mjMOUSE_ZOOM, 0, -0.05*yoffset, &c->scn, &c->cam);
+    }
+  =}
+
+  state window: GLFWwindow* = {= NULL =}
+  state context: mujoco_instance_t = {= {.m = NULL, .d = NULL} =}
+  state mujoco_time: mjtNum = 0
+  state lf_time: time = 0
+
+  input restart: bool
+  input advance: bool
+
+  output key: keypress_t
+
+  physical action keypress: keypress_t
+
+  reaction(startup) -> keypress {=
+    mjModel* m  = NULL;                 // MuJoCo model
+    mjData* d = NULL;                   // MuJoCo data
+
+    // load and compile model
+    char error[1000] = "Could not load model";
+    m = mj_loadXML(self->model_file, 0, error, 1000);
+    if (!m) {
+      mju_error("Load model error: %s", error);
+    }
+
+    // make data
+    d = mj_makeData(m);
+
+    // init GLFW
+    if (!glfwInit()) {
+      mju_error("Could not initialize GLFW");
+    }
+
+    // create window, make OpenGL context current, request v-sync
+    self->window = glfwCreateWindow(1200, 900, "Demo", NULL, NULL);
+    glfwMakeContextCurrent(self->window);
+    glfwSwapInterval(1);
+
+    // Set up the context struct.
+    self->context.m = m;
+    self->context.d = d;
+    self->context.button_left = false;
+    self->context.button_middle = false;
+    self->context.button_right = false;
+    self->context.lastx = 0;
+    self->context.lasty = 0;
+    self->context.keypress = keypress;
+    glfwSetWindowUserPointer(self->window, &self->context);
+
+    // initialize visualization data structures
+    mjv_defaultCamera(&self->context.cam);
+    mjv_defaultOption(&self->context.opt);
+    mjv_defaultScene(&self->context.scn);
+    mjr_defaultContext(&self->context.con);
+
+    // create scene and context
+    mjv_makeScene(m, &self->context.scn, 2000);
+    mjr_makeContext(m, &self->context.con, mjFONTSCALE_150);
+
+    // install GLFW mouse and keyboard callbacks
+    glfwSetKeyCallback(self->window, keyboard);
+    glfwSetCursorPosCallback(self->window, mouse_move);
+    glfwSetMouseButtonCallback(self->window, mouse_button);
+    glfwSetScrollCallback(self->window, scroll);
+
+    self->mujoco_time = d->time;
+    self->lf_time = lf_time_logical();
+
+    // get framebuffer viewport
+    mjrRect viewport = {0, 0, 0, 0};
+    glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
+  =}
+
+  reaction(keypress) -> key {=
+    lf_set(key, keypress->value);
+  =}
+
+  reaction(restart) {=
+    mj_resetData(self->context.m, self->context.d);
+    self->mujoco_time = self->context.d->time;
+    self->lf_time = lf_time_logical();
+  =}
+
+  reaction(advance) {=
+    if (!advance->value) return;
+    if (glfwWindowShouldClose(self->window)) {
+      lf_request_stop();
+      return;
+    }
+    // Calculate the amount of time to advance in nanoseconds, then seconds.
+    interval_t advance_time_ns = lf_time_logical() - self->lf_time;
+    double advance_time_sec = advance_time_ns * 10e-10;
+
+    while (self->context.d->time - self->mujoco_time < advance_time_sec) {
+      mj_step(self->context.m, self->context.d);
+    }
+    self->mujoco_time = self->context.d->time;
+    self->lf_time = lf_time_logical();
+
+    // get framebuffer viewport
+    mjrRect viewport = {0, 0, 0, 0};
+    glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
+
+    // update scene and render
+    mjv_updateScene(self->context.m, self->context.d, &self->context.opt, NULL, &self->context.cam, mjCAT_ALL, &self->context.scn);
+    mjr_render(viewport, &self->context.scn, &self->context.con);
+
+    // swap OpenGL buffers (blocking call due to v-sync)
+    glfwSwapBuffers(self->window);
+
+    // process pending GUI events, call GLFW callbacks
+    glfwPollEvents();
+  =}
+
+  reaction(shutdown) {=
+    //free visualization storage
+    mjv_freeScene(&self->context.scn);
+    mjr_freeContext(&self->context.con);
+
+    // free MuJoCo model and data
+    mj_deleteData(self->context.d);
+    mj_deleteModel(self->context.m);
+
+    // terminate GLFW (crashes with Linux NVidia drivers)
+  #if defined(__APPLE__) || defined(_WIN32)
+    glfwTerminate();
+  #endif
+  =}
+}

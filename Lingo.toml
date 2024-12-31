@@ -1,0 +1,31 @@
+[package]
+name = "mujoco-c"
+version = "0.1.0"
+
+[lib]
+name = "mujoco-c"
+main = "src/MuJoCoBasicDemo.lf"
+target = "C"
+platform = "Native"
+
+[lib.properties]
+
+[[app]]
+name = "MuJoCoBasicDemo"
+main = "src/MuJoCoBasicDemo.lf"
+target = "C"
+platform = "Native"
+
+[app.properties]
+fast = false
+
+[[app]]
+name = "MuJoCoCarDemo"
+main = "src/MuJoCoCarDemo.lf"
+target = "C"
+platform = "Native"
+
+[app.properties]
+fast = false
+
+[dependencies]

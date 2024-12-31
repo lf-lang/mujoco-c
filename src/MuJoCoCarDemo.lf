@@ -1,0 +1,74 @@
+/**
+ * @file Basic car driving program for MuJoCo.
+ *
+ * This program uses the [MuJoCoCar](lib/MuJoCoCar.lf) reactor to build a simple interactive simulation.
+ * The arrow keys can be used to drive the car.  The _backspace_ or _delete_ key will reset the simulation
+ * to its initial conditions, and the `q` or `Q` key will quit the simulation.
+ *
+ * See [README.md](../README.md) for prerequisites and installation instructions.
+ *
+ * @author Edward A. Lee
+ */
+target C {
+  keepalive: true, // Because of physical action.
+}
+
+import MuJoCoCar from "lib/MujocoCar.lf"
+
+main reactor(period: time = 33333333 ns, speed_sensitivity: double = 0.05, turn_sensitivity: double = 0.01) {
+  timer t(0, period)
+  state speed:double = 0;
+  state turn:double = 0;
+
+  m = new MuJoCoCar(model_file = {= LF_SOURCE_DIRECTORY LF_FILE_SEPARATOR "models" LF_FILE_SEPARATOR "car.xml" =})
+
+  reaction(startup) {=
+    lf_print("*** Backspace to reset.");
+    lf_print("*** Type q to quit.\n");
+  =}
+
+  reaction(t) -> m.advance {=
+    lf_set(m.advance, true);
+  =}
+
+  reaction(m.key) -> m.restart, m.forward, m.turn {=
+    // If backspace: reset simulation
+    // If q or Q: quit
+    if (m.key->value.act==GLFW_PRESS) {
+      if (m.key->value.key==GLFW_KEY_BACKSPACE) {
+        lf_set(m.restart, true);
+        self->speed = 0.0;
+        self->turn = 0.0;
+      } else if (m.key->value.key==GLFW_KEY_Q) {
+        lf_request_stop();
+      } else if (m.key->value.key==GLFW_KEY_UP) {
+        self->speed += self->speed_sensitivity;
+        lf_set(m.forward, self->speed);
+      } else if (m.key->value.key==GLFW_KEY_DOWN) {
+        self->speed -= self->speed_sensitivity;
+        lf_set(m.forward, self->speed);
+      } else if (m.key->value.key==GLFW_KEY_RIGHT) {
+        self->turn -= self->turn_sensitivity;
+        lf_set(m.turn, self->turn);
+      } else if (m.key->value.key==GLFW_KEY_LEFT) {
+        self->turn += self->turn_sensitivity;
+        lf_set(m.turn, self->turn);
+      }
+    }
+  =}
+
+  reaction(m.right_force, m.left_force) {=
+    if (m.left_force->is_present) {
+      printf("\r<--- %f", m.left_force->value);
+    }
+    if (m.right_force->is_present) {
+      printf("\t %f --->", m.right_force->value);
+    }
+    // Flush the output buffer to ensure the line updates immediately
+    fflush(stdout);
+  =}
+
+  reaction(shutdown) {=
+    lf_print("\nExiting.");
+  =}
+}
