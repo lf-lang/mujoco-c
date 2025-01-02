@@ -3,7 +3,8 @@
  */
 target C {
   keepalive: true, // Because of physical action.
-  cmake-include: "../include/mujoco.cmake"
+  cmake-include: "../include/mujoco.cmake",
+  files: "../models/hello.xml"
 }
 
 preamble {=
@@ -68,7 +69,7 @@ preamble {=
  * @author Edward A. Lee
  */
 reactor MuJoCoBase(
-  model_file: string = {= LF_SOURCE_DIRECTORY LF_FILE_SEPARATOR "models" LF_FILE_SEPARATOR "hello.xml" =}
+  model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "hello.xml" =}
 ) {
 
   preamble {=
