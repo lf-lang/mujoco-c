@@ -3,3 +3,4 @@ bin
 src-gen
 /include
 fed-gen
+MUJOCO_LOG.TXT
