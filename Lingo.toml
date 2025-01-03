@@ -4,7 +4,7 @@ version = "0.1.0"
 
 [lib]
 name = "mujoco-c"
-main = "src/MuJoCoBasicDemo.lf"
+location = "src/lib"
 target = "C"
 platform = "Native"
 
@@ -17,7 +17,6 @@ target = "C"
 platform = "Native"
 
 [app.properties]
-fast = false
 
 [[app]]
 name = "MuJoCoCarDemo"
@@ -26,6 +25,5 @@ target = "C"
 platform = "Native"
 
 [app.properties]
-fast = false
 
 [dependencies]
