@@ -6,7 +6,7 @@ target C {
   files: "../models/car.xml"
 }
 
-import MuJoCoBase from "MujocoBase.lf"
+import MuJoCoBase from "MuJoCoBase.lf"
 
 /**
  * @brief Model of a two-wheeled steerable vehicle.
