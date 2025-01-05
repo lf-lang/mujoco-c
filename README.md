@@ -35,7 +35,7 @@ brew install glfw
 
 2. Download the Mujoco v3.2.6 DMG disk image from [here](https://github.com/google-deepmind/mujoco/releases/tag/3.2.6).
 ```sh
-wget wget https://github.com/google-deepmind/mujoco/releases/download/3.2.6/mujoco-3.2.6-macos-universal2.dmg
+wget https://github.com/google-deepmind/mujoco/releases/download/3.2.6/mujoco-3.2.6-macos-universal2.dmg
 ```
 
 3. Install to `/Application` by double-clicking the DMG and dragging MuJoCo.app into `/Applications` 
