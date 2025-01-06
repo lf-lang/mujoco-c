@@ -1,10 +1,7 @@
-if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  set(MUJOCO_PATH /opt/mujoco-3.2.6-linux-x86_64/mujoco-3.2.6/)
-elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  set(MUJOCO_PATH /Application/MuJoCo.app/mujoco.framework)
-endif()
-
 # For Mujoco
+# If mujoco is installed to a different location, then the following variable
+# should be set to the correct path. See README.md
+set(MUJOCO_PATH "/opt/mujoco")
 list(APPEND CMAKE_PREFIX_PATH ${MUJOCO_PATH})
 find_library(MUJOCO_LIB mujoco REQUIRED)
 find_path(MUJOCO_INCLUDE_PATH mujoco REQUIRED)
