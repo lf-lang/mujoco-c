@@ -32,7 +32,7 @@ brew install glfw
 2. Build Mujoco v3.2.6 from source and install to `/opt/mujoco`
 
 ```sh
-git clone git@github.com:google-deepmind/mujoco.git -b 3.2.6
+git clone https://github.com/google-deepmind/mujoco.git -b 3.2.6
 cd mujoco
 mkdir build
 cd build
