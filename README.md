@@ -21,6 +21,7 @@ tar xvf mujoco-*
 sudo mv mujoco-3.2.6 /opt/mujoco
 ```
 
+Alternatively, Mujoco can be built from source as explained under the section for MacOS below.
 
 ### macOS
 1. Install GLFW, a graphics library used by MuJoCo
