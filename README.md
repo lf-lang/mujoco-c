@@ -6,27 +6,47 @@ The derived reactors customize this base class for particular MuJoCo model files
 
 ## Prerequisites
 
-MuJoCo depends on [GLFW](https://www.glfw.org), a graphics library that you must install.  On macOS:
+### Linux (Ubuntu)
+
+1. Install GLFW, a graphics library used by MuJoCo
+
+```sh
+apt install libglfw3-dev
+```
+
+2. Download a prebuilt version of Mujoco v3.2.6 and install it to `/opt/mujoco`. The following works for x86, for aarch64, change the download path accordingly (https://github.com/google-deepmind/mujoco/releases/tag/3.2.6)
+```sh
+wget https://github.com/google-deepmind/mujoco/releases/download/3.2.6/mujoco-3.2.6-linux-x86_64.tar.gz
+tar xvf mujoco-*
+sudo mv mujoco-3.2.6 /opt/mujoco
+```
+
+Alternatively, Mujoco can be built from source as explained under the section for MacOS below.
+
+### macOS
+1. Install GLFW, a graphics library used by MuJoCo
 
 ```sh
 brew install glfw
 ```
 
-MuJoCo itself seems to be best installed from source.  The following worked for me on macOS:
+2. Build Mujoco v3.2.6 from source and install to `/opt/mujoco`
 
 ```sh
-git clone git@github.com:google-deepmind/mujoco.git
+git clone https://github.com/google-deepmind/mujoco.git -b 3.2.6
 cd mujoco
 mkdir build
 cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+cmake .. -DCMAKE_INSTALL_PREFIX=/opt/mujoco
 cmake --build .
 sudo cmake --install .
+
 ```
 
-The `sudo` on the last line is required to install it in `/usr/local`, which is what I did.
+### All platforms
 
-The [mujoco.cmake](src/include/mujoco.cmake) file will need to be changed if you change either of the above install locations.
+If mujoco is installed to a different location the
+[mujoco.cmake](src/include/mujoco.cmake) must be updated accordingly.
 
 ## Demos
 
