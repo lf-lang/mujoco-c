@@ -63,15 +63,18 @@ import MuJoCoBase from "MuJoCoBase.lf"
   =}
 
   reaction(restart) {=
+    advance_simulator();
     self->context.d->ctrl[self->forward_index] = 0.0;
     self->context.d->ctrl[self->turn_index] = 0.0;
   =}
 
   reaction(forward) {=
+    advance_simulator();
     self->context.d->ctrl[self->forward_index] = forward->value;
   =}
 
   reaction(turn) {=
+    advance_simulator();
     self->context.d->ctrl[self->turn_index] = turn->value;
   =}
 

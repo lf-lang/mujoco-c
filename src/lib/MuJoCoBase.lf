@@ -214,6 +214,20 @@ reactor MuJoCoBase(
     glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
   =}
 
+  // Advance the MuJoCo simulation to the current logical time.
+  method advance_simulator(): void {=
+    // Calculate the amount of time to advance in nanoseconds, then seconds.
+    interval_t advance_time_ns = lf_time_logical() - self->lf_time;
+    if (advance_time_ns <= 0) return; // Nothing to do.
+    double advance_time_sec = advance_time_ns * 10e-10;
+
+    while (self->context.d->time - self->mujoco_time < advance_time_sec) {
+      mj_step(self->context.m, self->context.d);
+    }
+    self->mujoco_time = self->context.d->time;
+    self->lf_time = lf_time_logical();
+  =}
+
   reaction(keypress) -> key {=
     lf_set(key, keypress->value);
   =}
@@ -230,15 +244,7 @@ reactor MuJoCoBase(
       lf_request_stop();
       return;
     }
-    // Calculate the amount of time to advance in nanoseconds, then seconds.
-    interval_t advance_time_ns = lf_time_logical() - self->lf_time;
-    double advance_time_sec = advance_time_ns * 10e-10;
-
-    while (self->context.d->time - self->mujoco_time < advance_time_sec) {
-      mj_step(self->context.m, self->context.d);
-    }
-    self->mujoco_time = self->context.d->time;
-    self->lf_time = lf_time_logical();
+    advance_simulator();
 
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
