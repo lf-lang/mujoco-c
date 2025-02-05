@@ -1,6 +1,4 @@
-/**
- * @file Base class for reactors using the MuJoCo framework that advances itself.
- */
+/** @file Base class for reactors using the MuJoCo framework that advances itself. */
 target C
 
 import MuJoCoBase from "MuJoCoBase.lf"
@@ -10,9 +8,9 @@ import MuJoCoBase from "MuJoCoBase.lf"
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
- * This reactor extends the base class to advance the simulation automatically and output a `tick` event
- * at each step. In addition, it will periodically update the display with period given by the `frame_period`
- * parameter, which defaults to 33 ms.
+ * This reactor extends the base class to advance the simulation automatically and output a `tick`
+ * event at each step. In addition, it will periodically update the display with period given by the
+ * `frame_period` parameter, which defaults to 33 ms.
  *
  * @author Edward A. Lee
  */
@@ -42,6 +40,6 @@ reactor MuJoCoAuto(frame_period: time = 33 ms) extends MuJoCoBase {
     interval_t delta_ns = (interval_t)(delta * 1e9);
     // printf("delta = %f, ns = %lld\n", delta, delta_ns);
     lf_schedule(advance, delta_ns);
-    self->lf_time = lf_time_logical();    
+    self->lf_time = lf_time_logical();
   =}
 }

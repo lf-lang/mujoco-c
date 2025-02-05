@@ -1,6 +1,4 @@
-/**
- * @file Base class for reactors using the MuJoCo framework with an advance input.
- */
+/** @file Base class for reactors using the MuJoCo framework with an advance input. */
 target C
 
 import MuJoCoBase from "MuJoCoBase.lf"
@@ -11,7 +9,8 @@ import MuJoCoBase from "MuJoCoBase.lf"
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
  * This reactor extends the base class with an `advance` input port that advances the simulation.
- * Upon receiving a true-valued `advance` input, the simulation advances to the logical time of that input.
+ * Upon receiving a true-valued `advance` input, the simulation advances to the logical time of that
+ * input.
  *
  * @author Edward A. Lee
  */

@@ -1,8 +1,6 @@
-/**
- * @file Base class for reactors using the MuJoCo physics-based simulation framework.
- */
+/** @file Base class for reactors using the MuJoCo physics-based simulation framework. */
 target C {
-  keepalive: true, // Because of physical action.
+  keepalive: true,  // Because of physical action.
   cmake-include: "../include/mujoco.cmake",
   files: "../models/hello.xml"
 }
@@ -51,9 +49,9 @@ preamble {=
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
- * Upon startup, this reactor reads the specified `model_file` and opens a window displaying it.
- * Any time a key is pressed, this reactor schedules a physical action to produce the key
- * information on the `key` output port.
+ * Upon startup, this reactor reads the specified `model_file` and opens a window displaying it. Any
+ * time a key is pressed, this reactor schedules a physical action to produce the key information on
+ * the `key` output port.
  *
  * This reactor handles some basic manipulations of the visualization:
  *
@@ -65,15 +63,14 @@ preamble {=
  *
  * This reactor does not advance the simulation. Derived classes must do that.
  *
- * This code is based on basic.cc from the [MuJoCo distribution](https://mujoco.com), which is licensed
- * under the Apache License, Version 2.0 (the "License"), http://www.apache.org/licenses/LICENSE-2.0.
+ * This code is based on basic.cc from the [MuJoCo distribution](https://mujoco.com), which is
+ * licensed under the Apache License, Version 2.0 (the "License"),
+ * http://www.apache.org/licenses/LICENSE-2.0.
  *
  * @author Edward A. Lee
  */
 reactor MuJoCoBase(
-  model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "hello.xml" =}
-) {
-
+    model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "hello.xml" =}) {
   preamble {=
     // keyboard callback schedules a physical action to produce an output.
     void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
@@ -169,7 +166,7 @@ reactor MuJoCoBase(
     self->mujoco_time = self->context.d->time;
     self->lf_time = lf_time_logical();
   =}
-  
+
   // Update the scene.
   method update_scene() {=
     // get framebuffer viewport
@@ -257,17 +254,17 @@ reactor MuJoCoBase(
   =}
 
   reaction(shutdown) {=
-    //free visualization storage
-    mjv_freeScene(&self->context.scn);
-    mjr_freeContext(&self->context.con);
+      //free visualization storage
+      mjv_freeScene(&self->context.scn);
+      mjr_freeContext(&self->context.con);
 
-    // free MuJoCo model and data
-    mj_deleteData(self->context.d);
-    mj_deleteModel(self->context.m);
+      // free MuJoCo model and data
+      mj_deleteData(self->context.d);
+      mj_deleteModel(self->context.m);
 
-    // terminate GLFW (crashes with Linux NVidia drivers)
-  #if defined(__APPLE__) || defined(_WIN32)
-    glfwTerminate();
-  #endif
+      // terminate GLFW (crashes with Linux NVidia drivers)
+    #if defined(__APPLE__) || defined(_WIN32)
+      glfwTerminate();
+    #endif
   =}
 }

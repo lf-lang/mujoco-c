@@ -1,8 +1,6 @@
-/**
- * @file Reactor for the basic car demonstrator in MuJoCo using the auto-advance version.
- */
+/** @file Reactor for the basic car demonstrator in MuJoCo using the auto-advance version. */
 target C {
-  keepalive: true, // Because of physical action.
+  keepalive: true,  // Because of physical action.
   files: "../models/car.xml"
 }
 
@@ -13,26 +11,25 @@ import MuJoCoAuto from "MuJoCoAuto.lf"
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
- * This reactor wraps the basic car demonstration model distributed with MuJoCo.
- * It provides inputs to control the two actuators defined in the [XML model file](../models/car.xml)
- * and outputs that report the sensor data from said model.
- * The version uses the auto-advancing version of the base class.
+ * This reactor wraps the basic car demonstration model distributed with MuJoCo. It provides inputs
+ * to control the two actuators defined in the [XML model file](../models/car.xml) and outputs that
+ * report the sensor data from said model. The version uses the auto-advancing version of the base
+ * class.
  *
  * @author Edward A. Lee
  */
- reactor MuJoCoCarAuto(  model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "car.xml" =}
-) extends MuJoCoAuto {
-  input forward:double
-  input turn:double
+reactor MuJoCoCarAuto(
+    model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "car.xml" =})
+    extends MuJoCoAuto {
+  input forward: double
+  input turn: double
 
-  output right_force:double
-  output left_force:double
+  output right_force: double
+  output left_force: double
 
-  // Actuator indexes.
-  state forward_index: int = 0
+  state forward_index: int = 0  // Actuator indexes.
   state turn_index: int = 0
-  // Sensor addresses
-  state right_address: int = 0
+  state right_address: int = 0  // Sensor addresses
   state left_address: int = 0
 
   reaction(startup) {=

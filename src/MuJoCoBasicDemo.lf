@@ -1,17 +1,17 @@
 /**
  * @file Basic Hello World program for Mujoco.
  *
- * This program uses the default physical model of the MuJoCoBase base class, which consists of a rectangular
- * object that starts above a plane and falls down to the plane.  This program adds very basic responses to
- * keyboard commands.  Specifically, _backspace_ or _delete_ will restart the simulation from its initial
- * conditions, and `q` or `Q` will quit the simulation.
+ * This program uses the default physical model of the MuJoCoBase base class, which consists of a
+ * rectangular object that starts above a plane and falls down to the plane. This program adds very
+ * basic responses to keyboard commands. Specifically, _backspace_ or _delete_ will restart the
+ * simulation from its initial conditions, and `q` or `Q` will quit the simulation.
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
  * @author Edward A. Lee
  */
 target C {
-  keepalive: true, // Because of physical action.
+  keepalive: true  // Because of physical action.
 }
 
 import MuJoCoAdvance from "lib/MuJoCoAdvance.lf"

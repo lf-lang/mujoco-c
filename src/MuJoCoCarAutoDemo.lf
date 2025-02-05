@@ -1,23 +1,23 @@
 /**
  * @file Basic car driving program for MuJoCo.
  *
- * This program uses the [MuJoCoCar](lib/MuJoCoCar.lf) reactor to build a simple interactive simulation.
- * The arrow keys can be used to drive the car.  The _backspace_ or _delete_ key will reset the simulation
- * to its initial conditions, and the `q` or `Q` key will quit the simulation.
+ * This program uses the [MuJoCoCar](lib/MuJoCoCar.lf) reactor to build a simple interactive
+ * simulation. The arrow keys can be used to drive the car. The _backspace_ or _delete_ key will
+ * reset the simulation to its initial conditions, and the `q` or `Q` key will quit the simulation.
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
  * @author Edward A. Lee
  */
 target C {
-  keepalive: true, // Because of physical action.
+  keepalive: true  // Because of physical action.
 }
 
 import MuJoCoCarAuto from "lib/MuJoCoCarAuto.lf"
 
 main reactor(speed_sensitivity: double = 0.05, turn_sensitivity: double = 0.01) {
-  state speed:double = 0;
-  state turn:double = 0;
+  state speed: double = 0
+  state turn: double = 0
 
   m = new MuJoCoCarAuto()
 
