@@ -26,4 +26,12 @@ platform = "Native"
 
 [app.properties]
 
+[[app]]
+name = "MuJoCoCarAutoDemo"
+main = "src/MuJoCoCarDemo.lf"
+target = "C"
+platform = "Native"
+
+[app.properties]
+
 [dependencies]

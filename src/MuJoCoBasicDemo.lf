@@ -21,7 +21,7 @@ main reactor(period: time = 16666667 ns) {
   m = new MuJoCoAdvance()
 
   reaction(startup) {=
-    lf_print("*** Backspace to reset.");
+    lf_print("\n*** Backspace to reset.");
     lf_print("*** Type q to quit.");
   =}
 

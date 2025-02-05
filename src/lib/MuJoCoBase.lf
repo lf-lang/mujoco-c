@@ -241,6 +241,11 @@ reactor MuJoCoBase(
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
+
+    lf_print("Navigation:");
+    lf_print("---- Mouse scroll: Zoom in and out.");
+    lf_print("---- Left mouse press and move: Rotate the view.");
+    lf_print("---- Right mouse press and move: Shift the view up and down. Hold the shift key for in and out.\n");
   =}
 
   reaction(keypress) -> key {=
