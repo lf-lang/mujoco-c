@@ -47,21 +47,23 @@ preamble {=
 =}
 
 /**
- * @brief MuJoCo simulation with visualization.
+ * @brief MuJoCo simulation with visualization base class.
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
  * Upon startup, this reactor reads the specified `model_file` and opens a window displaying it.
- * Upon receiving a true-valued `advance` input, the simulation advances to the logical time of that input.
- *
- * Each time an `advance` input is received, this reactor checks for keyboard inputs, and if there are
- * any, schedules a physical action to produce the keyboard input information on the `key` output port.
+ * Any time a key is pressed, this reactor schedules a physical action to produce the key
+ * information on the `key` output port.
  *
  * This reactor handles some basic manipulations of the visualization:
  *
  * - Mouse scroll: Zoom in and out.
  * - Left mouse press and move: Rotate the view.
  * - Right mouse press and move: Shift the view up and down. Hold the shift key for in and out.
+ *
+ * Upon receiving a `restart` input, this reactor restarts the simulation.
+ *
+ * This reactor does not advance the simulation. Derived classes must do that.
  *
  * This code is based on basic.cc from the [MuJoCo distribution](https://mujoco.com), which is licensed
  * under the Apache License, Version 2.0 (the "License"), http://www.apache.org/licenses/LICENSE-2.0.
@@ -149,11 +151,41 @@ reactor MuJoCoBase(
   state lf_time: time = 0
 
   input restart: bool
-  input advance: bool
 
   output key: keypress_t
 
   physical action keypress: keypress_t
+
+  // Advance the MuJoCo simulation to the current logical time.
+  method advance_simulator(): void {=
+    // Calculate the amount of time to advance in nanoseconds, then seconds.
+    interval_t advance_time_ns = lf_time_logical() - self->lf_time;
+    if (advance_time_ns <= 0) return; // Nothing to do.
+    double advance_time_sec = advance_time_ns * 10e-10;
+
+    while (self->context.d->time - self->mujoco_time < advance_time_sec) {
+      mj_step(self->context.m, self->context.d);
+    }
+    self->mujoco_time = self->context.d->time;
+    self->lf_time = lf_time_logical();
+  =}
+  
+  // Update the scene.
+  method update_scene() {=
+    // get framebuffer viewport
+    mjrRect viewport = {0, 0, 0, 0};
+    glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
+
+    // update scene and render
+    mjv_updateScene(self->context.m, self->context.d, &self->context.opt, NULL, &self->context.cam, mjCAT_ALL, &self->context.scn);
+    mjr_render(viewport, &self->context.scn, &self->context.con);
+
+    // swap OpenGL buffers (blocking call due to v-sync)
+    glfwSwapBuffers(self->window);
+
+    // process pending GUI events, call GLFW callbacks
+    glfwPollEvents();
+  =}
 
   reaction(startup) -> keypress {=
     mjModel* m  = NULL;                 // MuJoCo model
@@ -214,20 +246,6 @@ reactor MuJoCoBase(
     glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
   =}
 
-  // Advance the MuJoCo simulation to the current logical time.
-  method advance_simulator(): void {=
-    // Calculate the amount of time to advance in nanoseconds, then seconds.
-    interval_t advance_time_ns = lf_time_logical() - self->lf_time;
-    if (advance_time_ns <= 0) return; // Nothing to do.
-    double advance_time_sec = advance_time_ns * 10e-10;
-
-    while (self->context.d->time - self->mujoco_time < advance_time_sec) {
-      mj_step(self->context.m, self->context.d);
-    }
-    self->mujoco_time = self->context.d->time;
-    self->lf_time = lf_time_logical();
-  =}
-
   reaction(keypress) -> key {=
     lf_set(key, keypress->value);
   =}
@@ -236,29 +254,6 @@ reactor MuJoCoBase(
     mj_resetData(self->context.m, self->context.d);
     self->mujoco_time = self->context.d->time;
     self->lf_time = lf_time_logical();
-  =}
-
-  reaction(advance) {=
-    if (!advance->value) return;
-    if (glfwWindowShouldClose(self->window)) {
-      lf_request_stop();
-      return;
-    }
-    advance_simulator();
-
-    // get framebuffer viewport
-    mjrRect viewport = {0, 0, 0, 0};
-    glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
-
-    // update scene and render
-    mjv_updateScene(self->context.m, self->context.d, &self->context.opt, NULL, &self->context.cam, mjCAT_ALL, &self->context.scn);
-    mjr_render(viewport, &self->context.scn, &self->context.con);
-
-    // swap OpenGL buffers (blocking call due to v-sync)
-    glfwSwapBuffers(self->window);
-
-    // process pending GUI events, call GLFW callbacks
-    glfwPollEvents();
   =}
 
   reaction(shutdown) {=

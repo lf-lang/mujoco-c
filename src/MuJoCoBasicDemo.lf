@@ -14,11 +14,11 @@ target C {
   keepalive: true, // Because of physical action.
 }
 
-import MuJoCoBase from "lib/MuJoCoBase.lf"
+import MuJoCoAdvance from "lib/MuJoCoAdvance.lf"
 
 main reactor(period: time = 16666667 ns) {
   timer t(0, period)
-  m = new MuJoCoBase()
+  m = new MuJoCoAdvance()
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
