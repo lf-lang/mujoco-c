@@ -40,8 +40,9 @@ cd build
 cmake .. -DCMAKE_INSTALL_PREFIX=/opt/mujoco
 cmake --build .
 sudo cmake --install .
-
 ```
+
+It has also been reported that you can instead install the MuJoCo.app bundle, though we have not tested that.
 
 ### All platforms
 
@@ -57,6 +58,8 @@ If mujoco is installed to a different location the
 * [MuJoCoCarAuto](src/lib/MuJoCoCarAuto.lf) extends [MuJoCoAuto](src/lib/MuJoCoAuto.lf): Simulator for the [car](src/models/car.xml) basic demo model, providing a two-wheel vehicle and keyboard controlled driving. This version lets the simulator advance automatically.
 
 ## Demos
+
+Build the demos using `lfc` or `make`:
 
 * [MuJoCoBasicDemo](src/MuJoCoBasicDemo.lf): Rectangular object that falls to the floor.
 * [MuJoCoCarDemo](src/MuJoCoCarDemo.lf): Simple drivable car.

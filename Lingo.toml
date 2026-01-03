@@ -28,7 +28,7 @@ platform = "Native"
 
 [[app]]
 name = "MuJoCoCarAutoDemo"
-main = "src/MuJoCoCarDemo.lf"
+main = "src/MuJoCoCarAutoDemo.lf"
 target = "C"
 platform = "Native"
 
