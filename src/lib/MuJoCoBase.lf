@@ -34,12 +34,15 @@ preamble {=
     void* keypress;
   } mujoco_instance_t;
 
+  #ifndef KEYPRESS_TYPES_H
+  #define KEYPRESS_TYPES_H
   typedef struct {
     int key;
     int scancode;
     int act;
     int mods;
   } keypress_t;
+  #endif // KEYPRESS_TYPES_H
 
   #endif // MUJOCO_H
 =}
@@ -168,7 +171,7 @@ reactor MuJoCoBase(
   =}
 
   // Update the scene.
-  method update_scene() {=
+  method update_scene(text_to_overlay: string) {=
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(self->window, &viewport.width, &viewport.height);
@@ -176,6 +179,15 @@ reactor MuJoCoBase(
     // update scene and render
     mjv_updateScene(self->context.m, self->context.d, &self->context.opt, NULL, &self->context.cam, mjCAT_ALL, &self->context.scn);
     mjr_render(viewport, &self->context.scn, &self->context.con);
+
+    mjr_overlay(
+        mjFONT_SHADOW,           // font
+        mjGRID_BOTTOMLEFT,       // position
+        viewport,                // MjrRect viewport
+        text_to_overlay,             // line 1
+        NULL,         // line 2
+        &self->context.con                     // mjrContext*
+    );
 
     // swap OpenGL buffers (blocking call due to v-sync)
     glfwSwapBuffers(self->window);
@@ -228,6 +240,12 @@ reactor MuJoCoBase(
     // create scene and context
     mjv_makeScene(m, &self->context.scn, 2000);
     mjr_makeContext(m, &self->context.con, mjFONTSCALE_150);
+
+
+    /* Camera position */
+    self->context.cam.lookat[2]  = 0.5;
+    self->context.cam.distance   = 5;
+    self->context.cam.elevation  = -20.0;
 
     // install GLFW mouse and keyboard callbacks
     glfwSetKeyCallback(self->window, keyboard);

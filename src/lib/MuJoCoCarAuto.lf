@@ -61,22 +61,22 @@ reactor MuJoCoCarAuto(
   =}
 
   reaction(restart) {=
-    advance_simulator();
+    // advance_simulator();
     self->context.d->ctrl[self->forward_index] = 0.0;
     self->context.d->ctrl[self->turn_index] = 0.0;
   =}
 
   reaction(forward) {=
-    advance_simulator();
+    // advance_simulator();
     self->context.d->ctrl[self->forward_index] = forward->value;
   =}
 
   reaction(turn) {=
-    advance_simulator();
+    // advance_simulator();
     self->context.d->ctrl[self->turn_index] = turn->value;
   =}
 
-  reaction(advance) -> right_force, left_force {=
+  reaction(physics_timer) -> right_force, left_force {=
     // Output sensor data.
     lf_set(right_force, self->context.d->sensordata[self->right_address]);
     lf_set(left_force, self->context.d->sensordata[self->left_address]);
