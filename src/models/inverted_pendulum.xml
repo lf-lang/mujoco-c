@@ -1,0 +1,79 @@
+<!-- inverted_pendulum.xml -->
+<mujoco model="inverted_pendulum">
+  <!-- Simulation parameters -->
+  <option integrator="RK4" gravity="0 0 -9.81"/>
+
+  <!-- Visual settings for rendering -->
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.4 0.4 0.4" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+    <!-- Material definitions -->
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" 
+             width="512" height="512"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" 
+             rgb1="0.2 0.3 0.4" rgb2="0.1 0.15 0.2" markrgb="0.8 0.8 0.8" 
+             width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" 
+              texrepeat="5 5" reflectance="0.2"/>
+    <material name="cart_material" rgba="0.4 0.6 0.8 1"/>
+    <material name="pole_material" rgba="0.8 0.3 0.2 1"/>
+    <material name="track_material" rgba="0.5 0.5 0.5 1"/>
+  </asset>
+
+  <!-- Physical parameters with realistic values -->
+  <default>
+    <joint armature="0.01" damping="0.1" limited="true"/>
+    <geom contype="1" conaffinity="1" condim="3" friction="1 0.5 0.5"/>
+  </default>
+  
+  <worldbody>
+    <!-- Ground plane for visual reference -->
+    <geom name="floor" type="plane" size="5 5 0.1" material="groundplane"/>
+    
+    <!-- Track/rail for the cart (visual only) -->
+    <geom name="track" type="box" pos="0 0 0" size="2.5 0.05 0.02" 
+          material="track_material"
+          contype="0" conaffinity="0"/>
+
+    <!-- Cart: slides along X axis -->
+    <body name="cart" pos="0 0 0.05">
+      <joint name="slider" type="slide" axis="1 0 0"
+             range="-3 3" damping="0.5"/>
+      <geom type="box" size="0.2 0.1 0.05" mass="0.5"
+            rgba="0.3 0.5 0.9 1"/>
+
+      <!-- Pendulum: rotates in XZ plane, mounted on top of cart -->
+      <body name="pole" pos="0 0 0.05">
+        <joint name="hinge" type="hinge" axis="0 1 0" range="-90 90"
+               damping="0.05"/>
+        <!-- Rod: half-length = 0.5 m  => full length 1 m, mass 0.1 kg -->
+        <geom type="capsule" fromto="0 0 0  0 0 1.0"
+              size="0.025" mass="0.1" rgba="0.9 0.4 0.2 1"/>
+        <!-- Bob at tip -->
+        <geom type="sphere" pos="0 0 1.0" size="0.05"
+              mass="0.01" rgba="0.9 0.9 0.1 1"/>
+      </body>
+    </body>
+    <camera name="main" mode="fixed" pos="0 -4.5 1.5" xyaxes="1 0 0 0 0 1"/>
+  </worldbody>
+
+  <actuator>
+    <!-- Force actuator on the cart slider.
+         gear="1" means 1 N per unit control signal.
+         ctrlrange limits the force to ±20 N. -->
+    <motor name="force" joint="slider" gear="1"
+           ctrlrange="-20 20" ctrllimited="true"/>
+  </actuator>
+
+  <sensor>
+    <jointpos  name="cart_pos"   joint="slider"/>
+    <jointvel  name="cart_vel"   joint="slider"/>
+    <jointpos  name="pole_angle" joint="hinge"/>
+    <jointvel  name="pole_angle_vel"   joint="hinge"/>
+  </sensor>
+
+</mujoco>

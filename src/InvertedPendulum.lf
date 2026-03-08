@@ -1,0 +1,315 @@
+/*
+ * InvertedPendulum.lf
+ *
+ * Inverted-pendulum stabilisation with a cascade PID controller.
+ *
+ * Inner loop  – balances the pole (angle → force)
+ * Outer loop  – returns the cart to cart_pos = 0 (position → angle setpoint)
+ *
+ * @author Claude.ai
+ * @author Edward A. Lee
+ * @author Chadlia Jerad
+ */
+
+target C {
+  keepalive: true,
+  single-threaded: true,
+  cmake-include: ["include/mujoco.cmake"],
+  files: ["models/inverted_pendulum.xml"]
+}
+
+import MuJoCoAuto from "lib/MuJoCoAuto.lf"
+
+preamble {=
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+  #include <math.h>
+  #include <mujoco/mujoco.h>
+  #include <GLFW/glfw3.h>
+
+  #ifndef KEYPRESS_TYPES_H
+  #define KEYPRESS_TYPES_H
+  typedef struct {
+    int key;
+    int scancode;
+    int act;
+    int mods;
+  } keypress_t;
+  #endif // KEYPRESS_TYPES_H
+
+  typedef struct {
+    double kp, ki, kd;
+    double integral;
+    double prev_error;
+    double integral_limit, output_limit;
+    double dt;          /* sample period in seconds */
+  } PID;
+=}
+
+reactor InvertedPendulumSim(
+    model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "inverted_pendulum.xml" =},
+    control_step: time = 5 ms
+) extends MuJoCoAuto {
+
+  input force: double
+  input disturbance: double
+  
+  output cart_pos: double
+  output cart_vel: double
+  output pole_angle: double
+  output pole_angle_vel: double
+
+  timer control_timer(0, control_step)
+
+  state hinge_id: int
+  state s_cart_pos: int
+  state s_cart_vel: int
+  state s_pole_angle: int
+  state s_pole_angle_vel: int
+  state act_force: int
+  state latest_force: double
+
+  state step_count: long = 0
+
+  reaction(startup) {=
+    // Small initial perturbation so pole must be caught 
+    self->hinge_id = mj_name2id(self->context.m, mjOBJ_JOINT, "hinge");
+    self->context.d->qpos[self->context.m->jnt_qposadr[self->hinge_id]] = 0.05;  /* 0.05 rad ≈ 3° */
+
+    // Sensor address lookup 
+    self->s_cart_pos   = mj_name2id(self->context.m, mjOBJ_SENSOR, "cart_pos");
+    self->s_cart_vel   = mj_name2id(self->context.m, mjOBJ_SENSOR, "cart_vel");
+    self->s_pole_angle = mj_name2id(self->context.m, mjOBJ_SENSOR, "pole_angle");
+    self->s_pole_angle_vel   = mj_name2id(self->context.m, mjOBJ_SENSOR, "pole_angle_vel");
+    
+    // Actuator address 
+    self->act_force = mj_name2id(self->context.m, mjOBJ_ACTUATOR, "force");
+
+    // Start the simulation, initializing sim_start and wall_start 
+    self->sim_start   = self->context.d->time;
+    self->wall_start  = glfwGetTime();
+  =}
+
+  reaction(force) {=
+    self->latest_force = force->value;
+    self->context.d->ctrl[self->act_force] = self->latest_force;
+  =}
+
+  reaction(disturbance) {=
+    self->context.d->qvel[self->context.m->jnt_dofadr[self->s_pole_angle]] += disturbance->value;
+    lf_print("  [Disturbance] Applied impulse: %+5.2f rad/s", disturbance->value);
+  =}
+
+  reaction(physics_timer) {=
+    self->step_count++;
+    
+    if (self->step_count % 1000 == 0) {
+      double p_angle = self->context.d->sensordata[self->s_pole_angle];
+      double c_pos = self->context.d->sensordata[self->s_cart_pos];
+      snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE, 
+              "Time=%6.1fs:     Angle=%+7.2f rad (%+5.1f deg)     Cart pos=%+4.3f m     F=%+4.1f N",
+              lf_time_logical_elapsed() / 1e9,
+              p_angle, p_angle * 180.0 / 3.14159, c_pos, self->latest_force);
+    }
+  =}
+  
+  reaction(control_timer) -> cart_pos, cart_vel, pole_angle, pole_angle_vel {=
+    double p_angle = self->context.d->sensordata[self->s_pole_angle];
+    double c_pos = self->context.d->sensordata[self->s_cart_pos];
+    double p_vel = self->context.d->sensordata[self->s_pole_angle_vel];
+    double c_vel = self->context.d->sensordata[self->s_cart_vel];
+    lf_set(cart_pos , c_pos);
+    lf_set(cart_vel, c_vel);
+    lf_set(pole_angle_vel, p_vel);
+    lf_set(pole_angle, p_angle);
+  =}
+}
+
+
+reactor InvertedPendulumPID (control_step: time = 5 ms) {
+  preamble {=
+    #include <math.h>
+    static void pid_init(PID *p, 
+      double kp, double ki, double kd, 
+      double integral_limit, double output_limit,
+      double dt) {
+        p->kp = kp; p->ki = ki; p->kd = kd;
+        p->integral_limit = integral_limit;
+        p->output_limit = output_limit;
+        p->integral = 0.0; p->prev_error = 0.0;
+        p->dt = dt;
+    }
+
+    static inline double pid_clamp(double val, double lo, double hi) {
+      return val < lo ? lo : (val > hi ? hi : val);
+    }
+
+    static double pid_update(PID *p, double setpoint, double measurement) {
+        double error = setpoint - measurement;
+
+        /* Proportional */
+        double Pout = p->kp * error;
+
+        /* Integral (Euler forward, anti-windup via simple clamp below) */
+        p->integral += error * p->dt;
+        double Iout = p->ki * p->integral;
+        /* Clamp integral term to prevent windup if values are provided */
+        if (p->integral_limit > 0.0) {
+          Iout = pid_clamp(Iout, -p->integral_limit, p->integral_limit);
+        }
+
+        /* Derivative on measurement (not error) – avoids derivative kick
+           on setpoint steps */
+        double derivative = (error - p->prev_error) / p->dt;
+        double Dout = p->kd * derivative;
+
+        p->prev_error = error;
+        double output = Pout + Iout + Dout;
+
+        /* Clamp total output if limits are provided */
+        if (p->output_limit > 0.0) {
+          output = pid_clamp(output, -p->output_limit, p->output_limit);
+        }
+
+        return output;
+    }
+  =}
+
+  input cart_pos: double
+  input pole_angle: double
+  input do_reset: bool
+  output force: double
+
+  state inner: PID
+  state outer: PID
+
+  reaction(startup) {=
+    double dt = (double)(self->control_step * 1e-9);
+    pid_init(&self->inner, 120.0, 1.0, 30.0, 10, 0, dt);
+    pid_init(&self->outer, -1.0, -0.1, -1.0, 0, 0.1, dt);
+  =}
+
+  reaction(cart_pos, pole_angle) -> force {=
+    // Outer loop: cart position → desired pole angle
+    //   setpoint for cart is x = 0
+    //   a positive cart offset → tilt pole slightly forward
+    //   to drive cart back                                   
+    double desired_angle = pid_update(&self->outer, cart_pos->value, 0.0);
+
+    // Inner loop: pole angle → cart force
+    double force_val = pid_update(&self->inner, pole_angle->value, desired_angle);
+    lf_set(force, force_val);
+  =}
+
+  reaction(do_reset) {=
+     self->inner.integral = 0.0;
+     self->outer.integral = 0.0;  
+     self->inner.prev_error = 0.0;
+     self->outer.prev_error = 0.0;
+  =}
+}
+
+/**
+ * Data logger for CSV output.
+ */
+reactor DataLogger(filename: string = "pendulum_data.csv") {
+  preamble {=
+    #include <stdio.h>
+  =}
+  
+  input pole_angle: double
+  input pole_angle_vel: double
+  input cart_pos: double
+  input cart_vel: double
+  input force: double
+  
+  state log_file: FILE* = {= NULL =}
+  state sample_count: int = 0
+  
+  reaction(startup) {=
+    self->log_file = fopen(self->filename, "w");
+    if (self->log_file) {
+      fprintf(self->log_file, "time_s,pole_angle_rad,pole_angle_vel_rad_s,cart_pos_m,cart_vel_m_s,force_N\n");
+      lf_print("Data logger: writing to %s", self->filename);
+    }
+  =}
+  
+  reaction(force) pole_angle, pole_angle_vel, cart_pos, cart_vel {=
+    if (self->log_file) {
+      fprintf(self->log_file, "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+              lf_time_logical_elapsed() / 1e9,
+              pole_angle->value, pole_angle_vel->value,
+              cart_pos->value, cart_vel->value,
+              force->value);
+      self->sample_count++;
+    }
+  =}
+  
+  reaction(shutdown) {=
+    if (self->log_file) {
+      fclose(self->log_file);
+      lf_print("Data logger: wrote %d samples to file", self->sample_count);
+    }
+  =}
+}
+
+/*
+ * Main reactor that instantiates the simulation, controller, and logger.
+ */
+main reactor InvertedPendulum {
+  sim = new InvertedPendulumSim(sim_step = 1 ms, frame_period = 33 ms, control_step = 5 ms)
+  pid = new InvertedPendulumPID(control_step = 5 ms)
+  logger = new DataLogger(filename = "pendulum_data.csv")
+
+  sim.cart_pos -> pid.cart_pos after 0
+  sim.pole_angle -> pid.pole_angle after 0
+  pid.force -> sim.force
+
+  // Data logging
+  sim.pole_angle -> logger.pole_angle
+  sim.pole_angle_vel -> logger.pole_angle_vel
+  sim.cart_pos -> logger.cart_pos
+  sim.cart_vel -> logger.cart_vel
+  pid.force -> logger.force
+  
+  reaction(startup) {=
+    lf_print(" ");
+    lf_print("========================================================================");
+    lf_print("   Inverted Pendulum Control using MuJoCo + Cascade PID Controllers");
+    lf_print("========================================================================");
+    lf_print(" ");
+    lf_print("Controls:");
+    lf_print("  Q         - Quit");
+    lf_print("  R/Backsp  - Reset simulation");
+    lf_print("  \u2190         - Apply left disturbance");
+    lf_print("  \u2192         - Apply right disturbance");
+    lf_print(" ");
+  =}
+  
+  // Handle key presses from the simulation (inherited from MuJoCoBase)
+  reaction(sim.key) -> sim.restart, sim.disturbance, pid.do_reset {=
+    if (sim.key->value.act == GLFW_PRESS) {
+      if (sim.key->value.key == GLFW_KEY_Q) {
+        lf_print("Quit requested");
+        lf_request_stop();
+      } else if (sim.key->value.key == GLFW_KEY_BACKSPACE || 
+                 sim.key->value.key == GLFW_KEY_R) {
+        lf_set(sim.restart, true);
+        lf_set(pid.do_reset, true);
+      } else if (sim.key->value.key == GLFW_KEY_LEFT) {
+        lf_set(sim.disturbance, -0.5);
+      } else if (sim.key->value.key == GLFW_KEY_RIGHT) {
+        lf_set(sim.disturbance, 0.5); 
+      }
+    }
+  =}
+  
+  reaction(shutdown) {=
+    lf_print(" ");
+    lf_print("========================================================================");
+    lf_print("                        Simulation Complete");
+    lf_print("========================================================================");
+    lf_print("  Data saved to: pendulum_data.csv");
+    lf_print(" ");
+  =}}

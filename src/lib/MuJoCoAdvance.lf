@@ -24,6 +24,6 @@ reactor MuJoCoAdvance extends MuJoCoBase {
       return;
     }
     advance_simulator();
-    update_scene();
+    update_scene("");
   =}
 }
