@@ -1,0 +1,45 @@
+/**
+ * Franka Emika Panda robot demo.
+ *
+ * See [README.md](../README.md) for prerequisites and installation instructions.
+ *
+ * @author Edward A. Lee
+ */
+target C {
+  keepalive: true  // Because of physical action.
+}
+
+import MuJoCoPanda from "lib/MuJoCoPanda.lf"
+
+main reactor {
+  timer t(0, 100 ms)
+  state motor: double = 0.0
+  state step: double = 0.1
+
+  m = new MuJoCoPanda(sim_step = 10 ms, frame_period = 33 ms)
+
+  reaction(startup) {=
+    lf_print("*** Backspace to reset.");
+    lf_print("*** Type q to quit.\n");
+  =}
+
+  reaction(m.key) -> m.restart {=
+    // If backspace: reset simulation
+    // If q or Q: quit
+    if (m.key->value.act==GLFW_PRESS) {
+      if (m.key->value.key==GLFW_KEY_BACKSPACE) {
+        lf_set(m.restart, true);
+        self->motor = 0.0;
+      } else if (m.key->value.key==GLFW_KEY_Q) {
+        lf_request_stop();
+      }
+    }
+  =}
+
+  reaction(t) -> m.motor {=
+    for (int i = 0; i < 8; i++) {
+      lf_set(m.motor[i], self->motor);
+    }
+    self->motor += self->step;
+  =}
+}
