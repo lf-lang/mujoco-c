@@ -19,22 +19,16 @@ preamble {=
   #include <ctype.h>
   #include <stdio.h>
   #include <stdlib.h>
+  #include <stdarg.h>
   #include <string.h>
 
   #include "include/core/reactor.h"
   #include "logging/api/logging.h"
 
-  #define SC_CSV_MAX_COLS 32
-  #define SC_CSV_LINE_MAX 4096
+  #define SC_CSV_MAX_COLS 64
+  #define SC_CSV_LINE_MAX 1024
 
-  typedef enum {
-    SC_CSV_OTHER = 0,
-    SC_CSV_BANK_INDEX,
-    SC_CSV_STEP,
-    SC_CSV_HIGH_LIMIT,
-    SC_CSV_LOW_LIMIT,
-  } sc_csv_col_t;
-
+  /** Remove leading and trailing whitespace from the string. */
   static void sc_csv_trim(char* s) {
     char* p = s;
     while (*p && isspace((unsigned char)*p)) {
@@ -49,140 +43,79 @@ preamble {=
     }
   }
 
-  static sc_csv_col_t sc_csv_classify(const char* t) {
-    if (strcmp(t, "bank_index") == 0) return SC_CSV_BANK_INDEX;
-    if (strcmp(t, "step") == 0) return SC_CSV_STEP;
-    if (strcmp(t, "high_limit") == 0) return SC_CSV_HIGH_LIMIT;
-    if (strcmp(t, "low_limit") == 0) return SC_CSV_LOW_LIMIT;
-    return SC_CSV_OTHER;
-  }
-
-  static int sc_csv_split(char* line, char** fields, int max_fields) {
+  /** Replace the specified delimiter with a null character and return the number of fields. */
+  static int sc_csv_split(char* line, char delimiter, char** fields, int max_fields) {
     int n = 0;
     char* cur = line;
     while (n < max_fields) {
       fields[n++] = cur;
-      char* comma = strchr(cur, ',');
-      if (!comma) {
+      char* sep = strchr(cur, delimiter);
+      if (!sep) {
         break;
       }
-      *comma = '\0';
-      cur = comma + 1;
-    }
-    return n;
-  }
-
-  static int sc_csv_parse_header(char* buf, sc_csv_col_t* kinds) {
-    char* fields[SC_CSV_MAX_COLS];
-    int n = sc_csv_split(buf, fields, SC_CSV_MAX_COLS);
-    for (int i = 0; i < n; i++) {
-      sc_csv_trim(fields[i]);
-      kinds[i] = sc_csv_classify(fields[i]);
+      *sep = '\0';
+      cur = sep + 1;
     }
     return n;
   }
 
   /**
-   * CSV: header row bank_index, <param names>... ; data rows: int bank, then doubles.
+   * Read one delimited row and parse as doubles.
+   * The variadic arguments are double* pointers, terminated with NULL.
+   * Example:
+   *   double a, b;
+   *   lf_read_numeric_row("x.csv", ',', 3, &a, &b, NULL);
    */
-  static void simplecontroller_load_parameter_csv(
-      int bank_index,
-      const char* path,
-      double* step,
-      double* high_limit,
-      double* low_limit) {
-    FILE* f = fopen(path, "r");
+  static int lf_read_numeric_row(const char* filename, char delimiter, size_t row_number, ...) {
+    va_list ap;
+    size_t pointer_count = 0;
+    FILE* f = fopen(filename, "r");
     if (!f) {
-      lf_print_error("SimpleController: could not open parameter_file \"%s\"", path);
-      return;
+      lf_print_error("Could not open file \"%s\".", filename);
+      return -1;
     }
+
     char line[SC_CSV_LINE_MAX];
-    if (!fgets(line, sizeof line, f)) {
-      lf_print_error("SimpleController: empty parameter_file \"%s\"", path);
-      fclose(f);
-      return;
-    }
-    if ((unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF) {
-      memmove(line, line + 3, strlen(line + 3) + 1);
-    }
-    line[strcspn(line, "\r\n")] = '\0';
-
-    char hdr_copy[SC_CSV_LINE_MAX];
-    strncpy(hdr_copy, line, sizeof hdr_copy);
-    hdr_copy[sizeof hdr_copy - 1] = '\0';
-    sc_csv_col_t kinds[SC_CSV_MAX_COLS];
-    int ncols = sc_csv_parse_header(hdr_copy, kinds);
-
-    int bank_col = -1;
-    for (int i = 0; i < ncols; i++) {
-      if (kinds[i] == SC_CSV_BANK_INDEX) {
-        bank_col = i;
-        break;
-      }
-    }
-    if (bank_col < 0) {
-      lf_print_error("SimpleController: CSV \"%s\" has no bank_index column", path);
-      fclose(f);
-      return;
-    }
-
-    bool found = false;
-    char rowbuf[SC_CSV_LINE_MAX];
-    while (fgets(rowbuf, sizeof rowbuf, f)) {
-      rowbuf[strcspn(rowbuf, "\r\n")] = '\0';
-      if (rowbuf[0] == '\0') {
-        continue;
-      }
-      char row_copy[SC_CSV_LINE_MAX];
-      strncpy(row_copy, rowbuf, sizeof row_copy);
-      row_copy[sizeof row_copy - 1] = '\0';
-      char* fields[SC_CSV_MAX_COLS];
-      int nf = sc_csv_split(row_copy, fields, SC_CSV_MAX_COLS);
-      for (int i = 0; i < nf; i++) {
-        sc_csv_trim(fields[i]);
-      }
-      if (nf < ncols) {
-        continue;
-      }
-      char* end_bi = NULL;
-      long bi = strtol(fields[bank_col], &end_bi, 10);
-      if (end_bi == fields[bank_col] || *end_bi != '\0') {
-        continue;
-      }
-      if ((int)bi != bank_index) {
-        continue;
-      }
-      found = true;
-      for (int c = 0; c < ncols; c++) {
-        if (c == bank_col || kinds[c] == SC_CSV_OTHER) {
-          continue;
+    size_t row_count = 0;
+    while (fgets(line, sizeof(line), f)) {
+      if (row_count == row_number) {
+        char* row = &line[0];
+        // Remove the UTF-8 BOM (byte-order mark) if it exists.
+        if ((unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF) {
+          row += 3;
         }
-        char* endv = NULL;
-        double v = strtod(fields[c], &endv);
-        if (endv == fields[c] || *endv != '\0') {
-          lf_print_warning("SimpleController: invalid number in column %d, skipping", c);
-          continue;
+        // Terminate the last item in the line with a null character.
+        row[strcspn(row, "\r\n")] = '\0';
+
+        char* fields[SC_CSV_MAX_COLS];
+        int field_count = sc_csv_split(row, delimiter, fields, SC_CSV_MAX_COLS);
+        va_start(ap, row_number);
+        for (size_t i = 0; i < (size_t)field_count; i++) {
+          double* out = va_arg(ap, double*);
+          if (out == NULL) {
+            break;
+          }
+          pointer_count++;
+          sc_csv_trim(fields[i]);
+          char* end = NULL;
+          double parsed = strtod(fields[i], &end);
+          if (end != fields[i] && *end == '\0') {
+            *out = parsed;
+          } else {
+            lf_print_error(
+                "Failed to parse numeric value \"%s\" at row %zu, column %zu in \"%s\".",
+                fields[i], row_number, i, filename);
+          }
         }
-        switch (kinds[c]) {
-          case SC_CSV_STEP:
-            *step = v;
-            break;
-          case SC_CSV_HIGH_LIMIT:
-            *high_limit = v;
-            break;
-          case SC_CSV_LOW_LIMIT:
-            *low_limit = v;
-            break;
-          default:
-            break;
-        }
+        va_end(ap);
+        fclose(f);
+        return (int)pointer_count;
       }
-      break;
+      row_count++;
     }
+    lf_print_error("Requested row %zu not found in file \"%s\".", row_number, filename);
     fclose(f);
-    if (!found) {
-      lf_print_warning("SimpleController: no CSV row for bank_index %d in \"%s\"", bank_index, path);
-    }
+    return -1;
   }
 =}
 
@@ -200,12 +133,16 @@ reactor SimpleController(
 
   reaction(startup) {=
     if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
-      simplecontroller_load_parameter_csv(
-          self->bank_index,
+      double csv_bank_index = 0.0;
+      int n = lf_read_numeric_row(
           self->parameter_file,
+          ',',
+          (size_t)self->bank_index + 1, // +1 skips the header row
+          &csv_bank_index,
           &self->step,
           &self->high_limit,
-          &self->low_limit);
+          &self->low_limit,
+          NULL);
     }
   =}
 
@@ -224,7 +161,9 @@ reactor SimpleController(
 
 main reactor {
   m = new MuJoCoPanda(sim_step = 10 ms, frame_period = 33 ms)
-  c = new[8] SimpleController(period = 100 ms, parameter_file = {= LF_SOURCE_DIRECTORY "/PandaDemoParameters.csv" =})
+  c = new[8] SimpleController(
+      period = 100 ms,
+      parameter_file = {= LF_SOURCE_DIRECTORY "/PandaDemoParameters.csv" =})
 
   c.command -> m.motor
 
