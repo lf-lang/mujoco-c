@@ -1,0 +1,250 @@
+/**
+ * Franka Emika Panda robot demo.
+ *
+ * See [README.md](../README.md) for prerequisites and installation instructions.
+ *
+ * @author Edward A. Lee
+ */
+target C {
+  // On MacOS, GLFW can only be accessed from the main thread.
+  // The MuJoCoPanda reactor needs to be on this thread.
+  // Currently, the only way to ensure this is to set the workers to 1.
+  workers: 1,
+  keepalive: true  // Because of physical action for the keypresses.
+}
+
+import MuJoCoPanda from "lib/MuJoCoPanda.lf"
+
+preamble {=
+  #include <ctype.h>
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+
+  #include "include/core/reactor.h"
+  #include "logging/api/logging.h"
+
+  #define SC_CSV_MAX_COLS 32
+  #define SC_CSV_LINE_MAX 4096
+
+  typedef enum {
+    SC_CSV_OTHER = 0,
+    SC_CSV_BANK_INDEX,
+    SC_CSV_STEP,
+    SC_CSV_HIGH_LIMIT,
+    SC_CSV_LOW_LIMIT,
+  } sc_csv_col_t;
+
+  static void sc_csv_trim(char* s) {
+    char* p = s;
+    while (*p && isspace((unsigned char)*p)) {
+      p++;
+    }
+    if (p != s) {
+      memmove(s, p, strlen(p) + 1);
+    }
+    size_t n = strlen(s);
+    while (n > 0 && isspace((unsigned char)s[n - 1])) {
+      s[--n] = '\0';
+    }
+  }
+
+  static sc_csv_col_t sc_csv_classify(const char* t) {
+    if (strcmp(t, "bank_index") == 0) return SC_CSV_BANK_INDEX;
+    if (strcmp(t, "step") == 0) return SC_CSV_STEP;
+    if (strcmp(t, "high_limit") == 0) return SC_CSV_HIGH_LIMIT;
+    if (strcmp(t, "low_limit") == 0) return SC_CSV_LOW_LIMIT;
+    return SC_CSV_OTHER;
+  }
+
+  static int sc_csv_split(char* line, char** fields, int max_fields) {
+    int n = 0;
+    char* cur = line;
+    while (n < max_fields) {
+      fields[n++] = cur;
+      char* comma = strchr(cur, ',');
+      if (!comma) {
+        break;
+      }
+      *comma = '\0';
+      cur = comma + 1;
+    }
+    return n;
+  }
+
+  static int sc_csv_parse_header(char* buf, sc_csv_col_t* kinds) {
+    char* fields[SC_CSV_MAX_COLS];
+    int n = sc_csv_split(buf, fields, SC_CSV_MAX_COLS);
+    for (int i = 0; i < n; i++) {
+      sc_csv_trim(fields[i]);
+      kinds[i] = sc_csv_classify(fields[i]);
+    }
+    return n;
+  }
+
+  /**
+   * CSV: header row bank_index, <param names>... ; data rows: int bank, then doubles.
+   */
+  static void simplecontroller_load_parameter_csv(
+      int bank_index,
+      const char* path,
+      double* step,
+      double* high_limit,
+      double* low_limit) {
+    FILE* f = fopen(path, "r");
+    if (!f) {
+      lf_print_error("SimpleController: could not open parameter_file \"%s\"", path);
+      return;
+    }
+    char line[SC_CSV_LINE_MAX];
+    if (!fgets(line, sizeof line, f)) {
+      lf_print_error("SimpleController: empty parameter_file \"%s\"", path);
+      fclose(f);
+      return;
+    }
+    if ((unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF) {
+      memmove(line, line + 3, strlen(line + 3) + 1);
+    }
+    line[strcspn(line, "\r\n")] = '\0';
+
+    char hdr_copy[SC_CSV_LINE_MAX];
+    strncpy(hdr_copy, line, sizeof hdr_copy);
+    hdr_copy[sizeof hdr_copy - 1] = '\0';
+    sc_csv_col_t kinds[SC_CSV_MAX_COLS];
+    int ncols = sc_csv_parse_header(hdr_copy, kinds);
+
+    int bank_col = -1;
+    for (int i = 0; i < ncols; i++) {
+      if (kinds[i] == SC_CSV_BANK_INDEX) {
+        bank_col = i;
+        break;
+      }
+    }
+    if (bank_col < 0) {
+      lf_print_error("SimpleController: CSV \"%s\" has no bank_index column", path);
+      fclose(f);
+      return;
+    }
+
+    bool found = false;
+    char rowbuf[SC_CSV_LINE_MAX];
+    while (fgets(rowbuf, sizeof rowbuf, f)) {
+      rowbuf[strcspn(rowbuf, "\r\n")] = '\0';
+      if (rowbuf[0] == '\0') {
+        continue;
+      }
+      char row_copy[SC_CSV_LINE_MAX];
+      strncpy(row_copy, rowbuf, sizeof row_copy);
+      row_copy[sizeof row_copy - 1] = '\0';
+      char* fields[SC_CSV_MAX_COLS];
+      int nf = sc_csv_split(row_copy, fields, SC_CSV_MAX_COLS);
+      for (int i = 0; i < nf; i++) {
+        sc_csv_trim(fields[i]);
+      }
+      if (nf < ncols) {
+        continue;
+      }
+      char* end_bi = NULL;
+      long bi = strtol(fields[bank_col], &end_bi, 10);
+      if (end_bi == fields[bank_col] || *end_bi != '\0') {
+        continue;
+      }
+      if ((int)bi != bank_index) {
+        continue;
+      }
+      found = true;
+      for (int c = 0; c < ncols; c++) {
+        if (c == bank_col || kinds[c] == SC_CSV_OTHER) {
+          continue;
+        }
+        char* endv = NULL;
+        double v = strtod(fields[c], &endv);
+        if (endv == fields[c] || *endv != '\0') {
+          lf_print_warning("SimpleController: invalid number in column %d, skipping", c);
+          continue;
+        }
+        switch (kinds[c]) {
+          case SC_CSV_STEP:
+            *step = v;
+            break;
+          case SC_CSV_HIGH_LIMIT:
+            *high_limit = v;
+            break;
+          case SC_CSV_LOW_LIMIT:
+            *low_limit = v;
+            break;
+          default:
+            break;
+        }
+      }
+      break;
+    }
+    fclose(f);
+    if (!found) {
+      lf_print_warning("SimpleController: no CSV row for bank_index %d in \"%s\"", bank_index, path);
+    }
+  }
+=}
+
+reactor SimpleController(
+    period: time = 100 ms,
+    step: double = 0.1,
+    high_limit: double = 1.0,
+    low_limit: double = -1.0,
+    bank_index: int = 0,
+    parameter_file: string = "") {
+  input restart: bool
+  output command: double
+  timer t(0, period)
+  state motor: double = 0.0
+
+  reaction(startup) {=
+    if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
+      simplecontroller_load_parameter_csv(
+          self->bank_index,
+          self->parameter_file,
+          &self->step,
+          &self->high_limit,
+          &self->low_limit);
+    }
+  =}
+
+  reaction(restart) {=
+    self->motor = 0.0;
+  =}
+
+  reaction(t) -> command {=
+    lf_set(command, self->motor);
+    self->motor += self->step;
+    if (self->motor > self->high_limit || self->motor < self->low_limit) {
+      self->step = -self->step;
+    }
+  =}
+}
+
+main reactor {
+  m = new MuJoCoPanda(sim_step = 10 ms, frame_period = 33 ms)
+  c = new[8] SimpleController(period = 100 ms, parameter_file = {= LF_SOURCE_DIRECTORY "/PandaDemoParameters.csv" =})
+
+  c.command -> m.motor
+
+  reaction(startup) {=
+    lf_print("*** Backspace to reset.");
+    lf_print("*** Type q to quit.\n");
+  =}
+
+  reaction(m.key) -> m.restart, c.restart {=
+    // If backspace: reset simulation
+    // If q or Q: quit
+    if (m.key->value.act==GLFW_PRESS) {
+      if (m.key->value.key==GLFW_KEY_BACKSPACE) {
+        lf_set(m.restart, true);
+        for (int i = 0; i < 8; i++) {
+          lf_set(c[i].restart, true);
+        }
+      } else if (m.key->value.key==GLFW_KEY_Q) {
+        lf_request_stop();
+      }
+    }
+  =}
+}
