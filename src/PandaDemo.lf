@@ -133,12 +133,10 @@ reactor SimpleController(
 
   reaction(startup) {=
     if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
-      double csv_bank_index = 0.0;
       int n = lf_read_numeric_row(
           self->parameter_file,
           ',',
           (size_t)self->bank_index + 1, // +1 skips the header row
-          &csv_bank_index,
           &self->step,
           &self->high_limit,
           &self->low_limit,
