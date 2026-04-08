@@ -158,6 +158,8 @@ reactor SimpleController(
 }
 
 main reactor {
+  timer read_state_timer(0, 500 ms)
+
   m = new MuJoCoPanda(sim_step = 10 ms, frame_period = 33 ms)
   c = new[8] SimpleController(
       period = 100 ms,
@@ -183,5 +185,32 @@ main reactor {
         lf_request_stop();
       }
     }
+  =}
+
+  reaction(read_state_timer) -> m.read_state {=
+    lf_set(m.read_state, true);
+  =}
+
+  reaction(m.joint_pos, m.joint_vel) {=
+    lf_print(
+        "qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f",
+        m.joint_pos[0]->value,
+        m.joint_pos[1]->value,
+        m.joint_pos[2]->value,
+        m.joint_pos[3]->value,
+        m.joint_pos[4]->value,
+        m.joint_pos[5]->value,
+        m.joint_pos[6]->value,
+        m.joint_pos[7]->value,
+        m.joint_pos[8]->value,
+        m.joint_vel[0]->value,
+        m.joint_vel[1]->value,
+        m.joint_vel[2]->value,
+        m.joint_vel[3]->value,
+        m.joint_vel[4]->value,
+        m.joint_vel[5]->value,
+        m.joint_vel[6]->value,
+        m.joint_vel[7]->value,
+        m.joint_vel[8]->value);
   =}
 }
