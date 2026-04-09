@@ -121,7 +121,7 @@ preamble {=
 
 reactor SimpleController(
     period: time = 100 ms,
-    speed: int = 0,
+    dataset: int = 0,
     step: double = 0.05,
     high_limit: double = 1.0,
     low_limit: double = -1.0,
@@ -137,7 +137,7 @@ reactor SimpleController(
       int n = lf_read_numeric_row(
           self->parameter_file,
           ',',
-          (size_t)((9 * self->speed) + self->bank_index + 1), // +1 skips the header row
+          (size_t)((9 * self->dataset) + self->bank_index + 1), // +1 skips the header row
           &self->step,
           &self->high_limit,
           &self->low_limit,
@@ -158,12 +158,12 @@ reactor SimpleController(
   =}
 }
 
-main reactor(speed: int = 0) {
+main reactor(dataset: int = 0) {
   timer read_state_timer(0, 500 ms)
 
   m = new MuJoCoPanda(sim_step = 10 ms, frame_period = 33 ms)
   c = new[8] SimpleController(
-      speed = speed,
+      dataset = dataset,
       period = 100 ms,
       parameter_file = {= LF_SOURCE_DIRECTORY "/PandaDemoParameters.csv" =})
 
