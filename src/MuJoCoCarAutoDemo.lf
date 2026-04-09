@@ -24,7 +24,6 @@ main reactor(speed_sensitivity: double = 0.05, turn_sensitivity: double = 0.01) 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
     lf_print("*** Type q to quit.\n");
-    snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE, "MuJoCo Car Auto Demo");
   =}
 
   reaction(m.key) -> m.restart, m.forward, m.turn {=
