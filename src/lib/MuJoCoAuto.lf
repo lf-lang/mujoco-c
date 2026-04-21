@@ -8,17 +8,18 @@ import MuJoCoBase from "MuJoCoBase.lf"
  *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
- * This reactor extends the base class to advance the simulation automatically using a  
- * physics timer and output a `tick` event at each step. The `sim_step` parameter,
- * which defaults to 1 ms, determines the time step for the physics simulation.
- * In addition, it will periodically update the display with period given by the
- * `frame_period` parameter, which defaults to 33 ms, using a rendering timer. 
- * 
-* @author Edward A. Lee
-* @author Chadlia Jerad
+ * This reactor extends the base class to advance the simulation automatically using a physics timer
+ * and output a `tick` event at each step. The time taken between ticks is given in the XML file
+ * specified by the `model_file` parameter by means of an option `<option timestep="0.005" ... />`.
+ * If no timestep option is specified, a MuJoCo default will be used (typically 2ms).
+ *
+ * In addition, it will periodically update the display with period given by the `frame_period`
+ * parameter, which defaults to 33 ms, using a rendering timer.
+ *
+ * @author Edward A. Lee
+ * @author Chadlia Jerad
  */
-reactor MuJoCoAuto(frame_period: time = 33 ms, sim_step: time = 1 ms) extends MuJoCoBase {
-
+reactor MuJoCoAuto(frame_period: time = 33 ms) extends MuJoCoBase {
   preamble {=
     #define OVERLAY_BUF_SIZE 100
   =}
@@ -26,30 +27,33 @@ reactor MuJoCoAuto(frame_period: time = 33 ms, sim_step: time = 1 ms) extends Mu
   output tick: bool
 
   timer rendering_timer(0, frame_period)
-  timer physics_timer(0, sim_step)
+  logical action physics_timer
 
   state sim_start: double
   state wall_start: double
+  state sim_step: time = 2 ms
 
-  state text_to_overlay: char[]   // Buffer for text to overlay on the display.
+  state text_to_overlay: char[]  // Buffer for text to overlay on the display.
 
-  reaction(startup) {=
+  reaction(startup) -> physics_timer {=
     self->text_to_overlay = (char*)malloc(OVERLAY_BUF_SIZE * sizeof(char));
     snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE, "MuJoCo Simulation Starting...");
+    self->sim_step = (int)(self->context.m->opt.timestep * 1e9);
+    lf_schedule(physics_timer, self->sim_step);
   =}
 
   reaction(rendering_timer) {=
     update_scene(self->text_to_overlay);
   =}
 
-reaction(physics_timer) -> tick {=
+  reaction(physics_timer) -> tick, physics_timer {=
     lf_set(tick, true);
     if (glfwWindowShouldClose(self->window)) {
       lf_request_stop();
       return;
     }
 
-    // Real-time pacing: if the simulation is running faster than real time, sleep briefly 
+    // Real-time pacing: if the simulation is running faster than real time, sleep briefly
     // to let real time catch up.
     double sim_time_elapsed  = self->context.d->time - self->sim_start;
     double wall_time_elapsed = glfwGetTime() - self->wall_start;
@@ -60,5 +64,6 @@ reaction(physics_timer) -> tick {=
         glfwWaitEventsTimeout(sim_time_elapsed - wall_time_elapsed - delta_ns);
     }
     mj_step(self->context.m, self->context.d);
+    lf_schedule(physics_timer, self->sim_step);
   =}
 }

@@ -1,10 +1,16 @@
 /**
  * Franka Emika Panda robot demo.
  *
+ * This moves each of the eight joints of the Panda robot through a range of values defined in the
+ * CSV file.
+ *
  * See [README.md](../README.md) for prerequisites and installation instructions.
  *
- * This program reads parameter values from a CSV file and uses them to control the Panda robot.
- * The CSV file is "PandaDemoParameters.csv" located in the same directory as this program.
+ * This program reads parameter values from a CSV file and uses them to control the Panda robot. The
+ * CSV file is "PandaDemoParameters.csv" located in the same directory as this program. There are
+ * three datasets in the CSV file corresponding to three different speeds of motion. To select a
+ * dataset, provide the command-line option `--dataset <dataset_number>`, where `<dataset_number>`
+ * is 0, 1, or 2.
  *
  * @author Edward A. Lee
  */
@@ -13,10 +19,13 @@ target C {
   // The MuJoCoPanda reactor needs to be on this thread.
   // Currently, the only way to ensure this is to set the workers to 1.
   workers: 1,
-  keepalive: true,  // Because of physical action for the keypresses.
+  // Because of physical action for the keypresses.
+  keepalive: true,
   // To use the lf_initialize_double function, we need to include the following:
   cmake-include: ["/lib/c/reactor-c/util/initialize_from_file.cmake"],
-  files: ["/lib/c/reactor-c/util/initialize_from_file.c", "/lib/c/reactor-c/util/initialize_from_file.h"]
+  files: [
+      "/lib/c/reactor-c/util/initialize_from_file.c",
+      "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
 import MuJoCoPanda from "lib/MuJoCoPanda.lf"
@@ -66,9 +75,9 @@ reactor SimpleController(
 
 main reactor(dataset: int = 0) {
   timer read_state_timer(0, 500 ms)
-  m = new MuJoCoPanda(sim_step = 10 ms, frame_period = 33 ms)
+  m = new MuJoCoPanda(frame_period = 33 ms)
   c = new[8] SimpleController(
-      dataset = dataset,
+      dataset=dataset,
       period = 100 ms,
       parameter_file = {= LF_SOURCE_DIRECTORY "/PandaDemoParameters.csv" =})
 

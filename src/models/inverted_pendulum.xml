@@ -1,7 +1,7 @@
 <!-- inverted_pendulum.xml -->
 <mujoco model="inverted_pendulum">
   <!-- Simulation parameters -->
-  <option integrator="RK4" gravity="0 0 -9.81"/>
+  <option timestep="0.001"integrator="RK4" gravity="0 0 -9.81"/>
 
   <!-- Visual settings for rendering -->
   <visual>
