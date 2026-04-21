@@ -1,4 +1,7 @@
-target C
+target C {
+  keepalive: true,  // Because of physical action.
+  files: "../models/mujoco_menagerie/franka_emika_panda"
+}
 
 import MuJoCoAuto from "MuJoCoAuto.lf"
 
@@ -9,7 +12,7 @@ import MuJoCoAuto from "MuJoCoAuto.lf"
  */
 reactor MuJoCoPanda(
     model_file: string = {=
-      LF_SOURCE_DIRECTORY "/models/mujoco_menagerie/franka_emika_panda/scene.xml"
+      LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "franka_emika_panda" LF_FILE_SEPARATOR "mjx_scene.xml"
     =}) extends MuJoCoAuto {
   input[8] motor: double
   input read_state: bool

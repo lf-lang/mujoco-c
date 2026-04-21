@@ -1,0 +1,116 @@
+/**
+ * Simple MuJoCo model of an inverted pendulum.
+ *
+ * @author Claude.ai
+ * @author Edward A. Lee
+ * @author Chadlia Jerad
+ */
+target C {
+  files: "../models/inverted_pendulum.xml"
+}
+
+import MuJoCoAuto from "MuJoCoAuto.lf"
+
+preamble {=
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+  #include <math.h>
+  #include <mujoco/mujoco.h>
+  #include <GLFW/glfw3.h>
+
+  #ifndef KEYPRESS_TYPES_H
+  #define KEYPRESS_TYPES_H
+  typedef struct {
+    int key;
+    int scancode;
+    int act;
+    int mods;
+  } keypress_t;
+  #endif // KEYPRESS_TYPES_H
+
+  typedef struct {
+    double kp, ki, kd;
+    double integral;
+    double prev_error;
+    double integral_limit, output_limit;
+    double dt;          /* sample period in seconds */
+  } PID;
+=}
+
+reactor MuJoCoInvertedPendulum(
+    model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "inverted_pendulum.xml" =},
+    control_step: time = 5 ms) extends MuJoCoAuto {
+  input force: double
+  input disturbance: double
+
+  output cart_pos: double
+  output cart_vel: double
+  output pole_angle: double
+  output pole_angle_vel: double
+
+  timer control_timer(0, control_step)
+
+  state hinge_id: int
+  state s_cart_pos: int
+  state s_cart_vel: int
+  state s_pole_angle: int
+  state s_pole_angle_vel: int
+  state act_force: int
+  state latest_force: double
+
+  state step_count: long = 0
+
+  reaction(startup) {=
+    // Small initial perturbation so pole must be caught
+    self->hinge_id = mj_name2id(self->context.m, mjOBJ_JOINT, "hinge");
+    self->context.d->qpos[self->context.m->jnt_qposadr[self->hinge_id]] = 0.05;  /* 0.05 rad ≈ 3° */
+
+    // Sensor address lookup
+    self->s_cart_pos   = mj_name2id(self->context.m, mjOBJ_SENSOR, "cart_pos");
+    self->s_cart_vel   = mj_name2id(self->context.m, mjOBJ_SENSOR, "cart_vel");
+    self->s_pole_angle = mj_name2id(self->context.m, mjOBJ_SENSOR, "pole_angle");
+    self->s_pole_angle_vel   = mj_name2id(self->context.m, mjOBJ_SENSOR, "pole_angle_vel");
+
+    // Actuator address
+    self->act_force = mj_name2id(self->context.m, mjOBJ_ACTUATOR, "force");
+
+    // Start the simulation, initializing sim_start and wall_start
+    self->sim_start   = self->context.d->time;
+    self->wall_start  = glfwGetTime();
+  =}
+
+  reaction(force) {=
+    self->latest_force = force->value;
+    self->context.d->ctrl[self->act_force] = self->latest_force;
+  =}
+
+  reaction(disturbance) {=
+    self->context.d->qvel[self->context.m->jnt_dofadr[self->s_pole_angle]] += disturbance->value;
+    lf_print("  [Disturbance] Applied impulse: %+5.2f rad/s", disturbance->value);
+  =}
+
+  reaction(physics_timer) {=
+    self->step_count++;
+
+    if (self->step_count % 1000 == 0) {
+      double p_angle = self->context.d->sensordata[self->s_pole_angle];
+      double c_pos = self->context.d->sensordata[self->s_cart_pos];
+      snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE,
+              "Time=%6.1fs:     Angle=%+7.2f rad (%+5.1f deg)     Cart pos=%+4.3f m     F=%+4.1f N",
+              lf_time_logical_elapsed() / 1e9,
+              p_angle, p_angle * 180.0 / 3.14159, c_pos, self->latest_force);
+    }
+  =}
+
+  reaction(control_timer) -> cart_pos, cart_vel, pole_angle, pole_angle_vel {=
+    double p_angle = self->context.d->sensordata[self->s_pole_angle];
+    double c_pos = self->context.d->sensordata[self->s_cart_pos];
+    double p_vel = self->context.d->sensordata[self->s_pole_angle_vel];
+    double c_vel = self->context.d->sensordata[self->s_cart_vel];
+    lf_set(cart_pos , c_pos);
+    lf_set(cart_vel, c_vel);
+    lf_set(pole_angle_vel, p_vel);
+    lf_set(pole_angle, p_angle);
+  =}
+}

@@ -5,3 +5,5 @@ src-gen
 /include
 fed-gen
 MUJOCO_LOG.TXT
+.DS_Store
+pendulum_data.csv
