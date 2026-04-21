@@ -18,23 +18,6 @@ target C {
 import MuJoCoInvertedPendulum from "lib/MuJoCoInvertedPendulum.lf"
 
 preamble {=
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <string.h>
-  #include <math.h>
-  #include <mujoco/mujoco.h>
-  #include <GLFW/glfw3.h>
-
-  #ifndef KEYPRESS_TYPES_H
-  #define KEYPRESS_TYPES_H
-  typedef struct {
-    int key;
-    int scancode;
-    int act;
-    int mods;
-  } keypress_t;
-  #endif // KEYPRESS_TYPES_H
-
   typedef struct {
     double kp, ki, kd;
     double integral;

@@ -28,14 +28,6 @@ preamble {=
     int mods;
   } keypress_t;
   #endif // KEYPRESS_TYPES_H
-
-  typedef struct {
-    double kp, ki, kd;
-    double integral;
-    double prev_error;
-    double integral_limit, output_limit;
-    double dt;          /* sample period in seconds */
-  } PID;
 =}
 
 reactor MuJoCoInvertedPendulum(
