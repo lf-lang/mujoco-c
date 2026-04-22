@@ -63,7 +63,7 @@ reactor MuJoCoAuto(frame_period: time = 33 ms) extends MuJoCoBase {
         // (glfwWaitEventsTimeout caps at ~1 frame)
         glfwWaitEventsTimeout(sim_time_elapsed - wall_time_elapsed - delta_ns);
     }
-    mj_step(self->context.m, self->context.d);
+    advance_simulator();
     lf_schedule(physics_timer, self->sim_step);
   =}
 }
