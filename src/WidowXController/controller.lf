@@ -10,145 +10,51 @@
 * @author Friederike Bruns
 */
 
-target C  {
+target C {
   // On MacOS, GLFW can only be accessed from the main thread.
   // The MuJoCoPanda reactor needs to be on this thread.
   // Currently, the only way to ensure this is to set the workers to 1.
   workers: 1,
-  keepalive: true  // Because of physical action for the keypresses.
+  // Because of physical action for the keypresses.
+  keepalive: true,
+  // To use the lf_initialize_double function, we need to include the following:
+  cmake-include: ["/lib/c/reactor-c/util/initialize_from_file.cmake"],
+  files: [
+      "/lib/c/reactor-c/util/initialize_from_file.c",
+      "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
 import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
-import RobotStateReceiver from "RobotStateReceiver.lf"
 import PathplanningUnit from "PathplanningUnit.lf"
 import MotorControlUnit from "MotorControlUnit.lf"
 
 preamble {=
-    #include <stdio.h>
-    #include <string.h>
-    #include <arpa/inet.h>
-    #include <sys/socket.h>
-    #include <math.h>
-    #include <ctype.h>
-    #include <stdlib.h>
-    #include <stdarg.h>
-
-    #include "include/core/reactor.h"
-    #include "logging/api/logging.h"
-
-
-    #define SC_CSV_MAX_COLS 64
-    #define SC_CSV_LINE_MAX 1024
-
-  /** Remove leading and trailing whitespace from the string. */
-  static void sc_csv_trim(char* s) {
-    char* p = s;
-    while (*p && isspace((unsigned char)*p)) {
-      p++;
-    }
-    if (p != s) {
-      memmove(s, p, strlen(p) + 1);
-    }
-    size_t n = strlen(s);
-    while (n > 0 && isspace((unsigned char)s[n - 1])) {
-      s[--n] = '\0';
-    }
-  }
-
-  /** Replace the specified delimiter with a null character and return the number of fields. */
-  static int sc_csv_split(char* line, char delimiter, char** fields, int max_fields) {
-    int n = 0;
-    char* cur = line;
-    while (n < max_fields) {
-      fields[n++] = cur;
-      char* sep = strchr(cur, delimiter);
-      if (!sep) {
-        break;
-      }
-      *sep = '\0';
-      cur = sep + 1;
-    }
-    return n;
-  }
-
-  /**
-   * Read one delimited row and parse as doubles.
-   * The variadic arguments are double* pointers, terminated with NULL.
-   * Example:
-   *   double a, b;
-   *   lf_read_numeric_row("x.csv", ',', 3, &a, &b, NULL);
-   */
-  static int lf_read_numeric_row(const char* filename, char delimiter, size_t row_number, ...) {
-    va_list ap;
-    size_t pointer_count = 0;
-    FILE* f = fopen(filename, "r");
-    if (!f) {
-      lf_print_error("Could not open file \"%s\".", filename);
-      return -1;
-    }
-
-    char line[SC_CSV_LINE_MAX];
-    size_t row_count = 0;
-    while (fgets(line, sizeof(line), f)) {
-      if (row_count == row_number) {
-        char* row = &line[0];
-        // Remove the UTF-8 BOM (byte-order mark) if it exists.
-        if ((unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF) {
-          row += 3;
-        }
-        // Terminate the last item in the line with a null character.
-        row[strcspn(row, "\r\n")] = '\0';
-
-        char* fields[SC_CSV_MAX_COLS];
-        int field_count = sc_csv_split(row, delimiter, fields, SC_CSV_MAX_COLS);
-        va_start(ap, row_number);
-        for (size_t i = 0; i < (size_t)field_count; i++) {
-          double* out = va_arg(ap, double*);
-          if (out == NULL) {
-            break;
-          }
-          pointer_count++;
-          sc_csv_trim(fields[i]);
-          char* end = NULL;
-          double parsed = strtod(fields[i], &end);
-          if (end != fields[i] && *end == '\0') {
-            *out = parsed;
-          } else {
-            lf_print_error(
-                "Failed to parse numeric value \"%s\" at row %zu, column %zu in \"%s\".",
-                fields[i], row_number, i, filename);
-          }
-        }
-        va_end(ap);
-        fclose(f);
-        return (int)pointer_count;
-      }
-      row_count++;
-    }
-    lf_print_error("Requested row %zu not found in file \"%s\".", row_number, filename);
-    fclose(f);
-    return -1;
-  }
+  #include "initialize_from_file.h"
 =}
 
 reactor RobotControl(
     period: time = 100 ms,
-    step: double = 0.1,
+    dataset: int = 0,
+    step: double = 0.05,
+    factor: double = 0.1,
+    sin: bool = true,
     high_limit: double = 1.0,
     low_limit: double = -1.0,
     bank_index: int = 0,
     parameter_file: string = "") {
   input restart: bool
+  input qpos: double
+  input qvel: double
   output command: double
   timer t(0, period)
   state motor: double = 0.0
 
   reaction(startup) {=
     if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
-      int n = lf_read_numeric_row(
+      int n = lf_initialize_double(
           self->parameter_file,
           ',',
-          (size_t)self->bank_index + 1, // +1 skips the header row
+          (size_t)((9 * self->dataset) + self->bank_index + 1), // +1 skips the header row
           &self->step,
           &self->high_limit,
           &self->low_limit,
@@ -156,89 +62,95 @@ reactor RobotControl(
     }
   =}
 
-  planner = new PathplanningUnit();
-  state_rx = new RobotStateReceiver();
-  motor_ctrl = new MotorControlUnit();
-
   reaction(restart) {=
-      self->motor = 0.0;
+    self->motor = 0.0;
   =}
 
+  planner = new PathplanningUnit(
+    period = period,
+    factor = factor,
+    sin = sin,
+    high_limit = high_limit,
+    low_limit = low_limit,
+    step = step);
+  motor_ctrl = new MotorControlUnit();
+
+  // State feedback  → control
+  qpos -> motor_ctrl.qpos;
+  qvel -> motor_ctrl.qvel;
 
   // Path planner → control
-  planner.desired0 -> motor_ctrl.desired0;
-  planner.desired1 -> motor_ctrl.desired1;
-  planner.desired2 -> motor_ctrl.desired2;
-  planner.desired3 -> motor_ctrl.desired3;
-  planner.desired4 -> motor_ctrl.desired4;
-  planner.desired5 -> motor_ctrl.desired5;
-  planner.desired6 -> motor_ctrl.desired6;
-  planner.desired7 -> motor_ctrl.desired7;
+  planner.desired -> motor_ctrl.desired;
+ // planner.feedforward -> motor_ctrl.ff;
+  motor_ctrl.motor -> command;
 
-  planner.feef0 -> motor_ctrl.ff0;
-  planner.feef1 -> motor_ctrl.ff1;
-  planner.feef2 -> motor_ctrl.ff2;
-  planner.feef3 -> motor_ctrl.ff3;
-  planner.feef4 -> motor_ctrl.ff4;
-  planner.feef5 -> motor_ctrl.ff5;
-  planner.feef6 -> motor_ctrl.ff6;
-  planner.feef7 -> motor_ctrl.ff7;
-
-  // State feedback → control
-  state_rx.qpos0 -> motor_ctrl.qpos0;
-  state_rx.qpos1 -> motor_ctrl.qpos1;
-  state_rx.qpos2 -> motor_ctrl.qpos2;
-  state_rx.qpos3 -> motor_ctrl.qpos3;
-  state_rx.qpos4 -> motor_ctrl.qpos4;
-  state_rx.qpos5 -> motor_ctrl.qpos5;
-  state_rx.qpos6 -> motor_ctrl.qpos6;
-  state_rx.qpos7 -> motor_ctrl.qpos7;
-
-  state_rx.qvel0 -> motor_ctrl.qvel0;
-  state_rx.qvel1 -> motor_ctrl.qvel1;
-  state_rx.qvel2 -> motor_ctrl.qvel2;
-  state_rx.qvel3 -> motor_ctrl.qvel3;
-  state_rx.qvel4 -> motor_ctrl.qvel4;
-  state_rx.qvel5 -> motor_ctrl.qvel5;
-  state_rx.qvel6 -> motor_ctrl.qvel6;
-  state_rx.qvel7 -> motor_ctrl.qvel7;
-
-
-  reaction(t) -> command {=
+  // Control → robot
+ /* reaction(t) -> command {=
     lf_set(command, self->motor);
     self->motor += self->step;
     if (self->motor > self->high_limit || self->motor < self->low_limit) {
       self->step = -self->step;
     }
-  =}
+  =}*/
+
 }
 
-main reactor controller{
+main reactor controller(dataset: int = 0){
+  timer read_state_timer(0, 500 ms)
   m = new MuJoCoWidowX(frame_period = 33 ms)
-  cl = new[8] RobotControl(
+  c = new[8] RobotControl(
+      dataset=dataset,
       period = 100 ms,
       parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParameters.csv" =})
+
+  c.command -> m.motor;
+  m.joint_pos -> c.qpos;
+  m.joint_vel -> c.qvel;
   
-  cl.command -> m.motorL;
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
     lf_print("*** Type q to quit.\n");
   =}
 
-  reaction(m.key) -> m.restart, cl.restart {=
+  reaction(m.key) -> m.restart, c.restart {=
     // If backspace: reset simulation
     // If q or Q: quit
     if (m.key->value.act==GLFW_PRESS) {
       if (m.key->value.key==GLFW_KEY_BACKSPACE) {
         lf_set(m.restart, true);
         for (int i = 0; i < 8; i++) {
-          lf_set(cl[i].restart, true);
+          lf_set(c[i].restart, true);
         }
       } else if (m.key->value.key==GLFW_KEY_Q) {
         lf_request_stop();
       }
     }
+  =}
+
+  reaction(read_state_timer) -> m.read_state {=
+    lf_set(m.read_state, true);
+  =}
+
+  reaction(m.joint_pos, m.joint_vel) {=
+    lf_print(
+        "qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f",
+        m.joint_pos[0]->value,
+        m.joint_pos[1]->value,
+        m.joint_pos[2]->value,
+        m.joint_pos[3]->value,
+        m.joint_pos[4]->value,
+        m.joint_pos[5]->value,
+        m.joint_pos[6]->value,
+        m.joint_pos[7]->value,
+        m.joint_vel[0]->value,
+        m.joint_vel[1]->value,
+        m.joint_vel[2]->value,
+        m.joint_vel[3]->value,
+        m.joint_vel[4]->value,
+        m.joint_vel[5]->value,
+        m.joint_vel[6]->value,
+        m.joint_vel[7]->value);
   =}
 }
 

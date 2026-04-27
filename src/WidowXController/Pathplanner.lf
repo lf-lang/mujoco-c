@@ -15,38 +15,29 @@
 */
 target C
 
-reactor Pathplanner(dt: double = 0.02, factor: double = 0.1, sin: bool = true) {
-    timer t(0,20 msec);
-
-    output desired: double;
-    state phase: double = 0.0;
-   // state t: double = 0.0;
-    preamble {=
-        #include <math.h>    
+reactor Pathplanner(
+    period: time = 100 ms, factor: double = 0.1, sin: bool = true, high_limit: double = 0.0, low_limit: double = 0.0, step: double = 0.02) {
     
-    =}
+    timer t(0, period);
+    output desired: double;
+ // THIS is what you were missing
+    state current: double = 0.0;
+
     reaction(startup) {=
-        printf("Pathplanner instance created at %p\n", self);
+        self->current = self->low_limit;   // start at one side
     =}
 
     reaction(t) -> desired {=
-        double out = self->factor;
-        double pi = acos(-1.0);
-        if (self->sin) {
-            out = self->factor * sin(self->phase);
-        } else {
-            out = self->factor * cos(self->phase);
+
+        self->current += self->step;
+
+        if (self->current > self->high_limit || self->current < self->low_limit) {
+            self->step = -self->step;
+            self->current += self->step;  // avoid sticking at boundary
         }
 
-       
-        printf("Desired: %f\n", out);
-        lf_set(desired, out);
-       // self->t += self->dt;
-        // Increment phase
-        self->phase += 2.0 * pi * self->dt*0.5; // you can adjust frequency by scaling dt
-        if (self->phase > 2.0 * pi){
-           self->phase -= 2.0 *pi; 
-        }
-        printf("Phase: %f\n", self->phase);
+        lf_set(desired, self->current);
+
+        printf("Desired: %f\n", self->current);
     =}
 }

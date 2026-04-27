@@ -19,69 +19,20 @@ target C
 import FeedForward from "FFwd.lf"
 import Pathplanner from "Pathplanner.lf"
 
-reactor PathplanningUnit {
-    output desired0: double;
-    output desired1: double;
-    output desired2: double;
-    output desired3: double;
-    output desired4: double;
-    output desired5: double;
-    output desired6: double;
-    output desired7: double;
-    output feef0: double;
-    output feef1: double;
-    output feef2: double;
-    output feef3: double;
-    output feef4: double;
-    output feef5: double;
-    output feef6: double;
-    output feef7: double;
+reactor PathplanningUnit(
+    period: time = 100 ms, factor: double = 0.1, sin: bool = true, high_limit: double = 0.0, low_limit: double = 0.0, step: double = 0.02) {
+    output desired: double;
+    output feedforward: double;
 
+    pp = new Pathplanner(period = period, factor = factor,
+    sin = sin,
+    high_limit = high_limit,
+    low_limit = low_limit,
+    step = step);
+    //ff = new FeedForward(); 
 
-    pp0 = new Pathplanner(dt=0.02, factor=0.6, sin=true);
-    pp1 = new Pathplanner(dt=0.02, factor=0.7, sin=false);
-    pp2 = new Pathplanner(dt=0.02, factor=0.6, sin=true);
-    pp3 = new Pathplanner(dt=0.02, factor=0.5, sin=false);
-    pp4 = new Pathplanner(dt=0.02, factor=0.67, sin=true);
-    pp5 = new Pathplanner(dt=0.02, factor=0.6, sin=false);
-    pp6 = new Pathplanner(dt=0.02, factor=0.5, sin=true);
-    pp7 = new Pathplanner(dt=0.02, factor=0.6, sin=false);
-
-    ff0 = new FeedForward(); 
-    ff1 = new FeedForward(); 
-    ff2 = new FeedForward();
-    ff3 = new FeedForward(); 
-    ff4 = new FeedForward(); 
-    ff5 = new FeedForward(); 
-    ff6 = new FeedForward();
-    ff7 = new FeedForward();
-
-    
-    pp0.desired -> ff0.desired;
-    pp1.desired -> ff1.desired;
-    pp2.desired -> ff2.desired;
-    pp3.desired -> ff3.desired;
-    pp4.desired -> ff4.desired;
-    pp5.desired -> ff5.desired;
-    pp6.desired -> ff6.desired;
-    pp7.desired -> ff7.desired;
-
-    pp0.desired -> desired0;
-    pp1.desired -> desired1;
-    pp2.desired -> desired2;
-    pp3.desired -> desired3;
-    pp4.desired -> desired4;
-    pp5.desired -> desired5;
-    pp6.desired -> desired6;
-    pp7.desired -> desired7;
-
-    ff0.ff -> feef0;
-    ff1.ff -> feef1;
-    ff2.ff -> feef2;
-    ff3.ff -> feef3;
-    ff4.ff -> feef4;
-    ff5.ff -> feef5;
-    ff6.ff -> feef6;
-    ff7.ff -> feef7;
+   // pp.desired -> ff.desired;
+    pp.desired -> desired;
+    //ff.ff -> feedforward;
     
 }
