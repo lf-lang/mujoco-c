@@ -1,0 +1,52 @@
+/*
+* Generates periodic joint trajectories for the robot.
+* Produces sinusoidal or phase-shifted position references
+* that are consumed by the position PID controllers.
+*
+* Responsibilities:
+*   - Maintain trajectory phase
+*   - Compute desired joint position at each control cycle
+*   - Support configurable amplitude scaling via 'factor'
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+target C
+
+reactor Pathplanner(dt: double = 0.02, factor: double = 0.1, sin: bool = true) {
+    timer t(0,20 msec);
+
+    output desired: double;
+    state phase: double = 0.0;
+   // state t: double = 0.0;
+    preamble {=
+        #include <math.h>    
+    
+    =}
+    reaction(startup) {=
+        printf("Pathplanner instance created at %p\n", self);
+    =}
+
+    reaction(t) -> desired {=
+        double out = self->factor;
+        double pi = acos(-1.0);
+        if (self->sin) {
+            out = self->factor * sin(self->phase);
+        } else {
+            out = self->factor * cos(self->phase);
+        }
+
+       
+        printf("Desired: %f\n", out);
+        lf_set(desired, out);
+       // self->t += self->dt;
+        // Increment phase
+        self->phase += 2.0 * pi * self->dt*0.5; // you can adjust frequency by scaling dt
+        if (self->phase > 2.0 * pi){
+           self->phase -= 2.0 *pi; 
+        }
+        printf("Phase: %f\n", self->phase);
+    =}
+}

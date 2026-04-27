@@ -1,0 +1,30 @@
+/*
+* Computes a feedforward velocity term based on the change
+*   in desired joint position between successive control
+*   cycles. This improves tracking performance and reduces
+*   lag in the cascaded control structure.
+*
+* Responsibilities:
+*   - Estimate desired velocity using finite differences
+*   - Scale the estimate using configurable gain Kff
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+target C
+
+reactor FeedForward(Kff: double = 1.0, dt: double = 0.02) {
+    input desired: double;
+    output ff: double;
+
+    state last_desired: double = 0;
+
+    reaction(desired) -> ff {=
+        double velocity_est = (desired->value - self->last_desired) / self->dt;
+        self->last_desired = desired->value;
+
+        lf_set(ff, self->Kff * velocity_est);
+    =}
+}

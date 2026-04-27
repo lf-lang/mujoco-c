@@ -1,0 +1,23 @@
+/*
+*   Adds two input signals and forwards the result. This is
+*   used to combine position PID output with feedforward
+*   velocity before it enters the velocity PID controller.
+*
+* Responsibilities:
+*   - Perform simple arithmetic signal composition
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+target C
+
+reactor Sum {
+  input in1: double;
+  input in2: double;
+  output sum: double;
+  reaction(in1, in2) -> sum {=
+      lf_set(sum, in1->value + in2->value);
+  =}
+}

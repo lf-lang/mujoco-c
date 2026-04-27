@@ -1,0 +1,185 @@
+/*
+*   Implements the cascaded control architecture for all
+*   eight robot joints. Each joint uses:
+*
+*      Position PID -> Feedforward Sum -> Velocity PID
+*
+*   The final velocity PID outputs are sent to the SetMotor
+*   reactor which transmits actuator commands to MuJoCo.
+*
+* Responsibilities:
+*   - Track desired joint positions
+*   - Combine feedback control with feedforward terms
+*   - Generate smooth and stable actuator commands
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+target C
+
+import PID from "pid.lf"
+//import Sum from "Sum.lf"
+import SetMotor from "SetMotor.lf"
+
+reactor MotorControlUnit {
+
+    // Inputs
+    input desired0: double; 
+    input desired1: double; 
+    input desired2: double;
+    input desired3: double; 
+    input desired4: double; 
+    input desired5: double; 
+    input desired6: double;
+    input desired7: double;
+
+    input ff0: double; 
+    input ff1: double; 
+    input ff2: double;
+    input ff3: double; 
+    input ff4: double; 
+    input ff5: double; 
+    input ff6: double;
+    input ff7: double;
+
+    input qpos0: double; 
+    input qpos1: double; 
+    input qpos2: double;
+    input qpos3: double; 
+    input qpos4: double; 
+    input qpos5: double; 
+    input qpos6: double;
+    input qpos7: double;
+
+    input qvel0: double; 
+    input qvel1: double; 
+    input qvel2: double;
+    input qvel3: double; 
+    input qvel4: double; 
+    input qvel5: double; 
+    input qvel6: double;
+    input qvel7: double;
+
+    // Subreactors
+    pid_pos0 = new PID(KP = 4.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_pos1 = new PID(KP = 4.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_pos2 = new PID(KP = 3.5, KI = 0.0, TD = 0.005, Cycle = 0.02);
+    pid_pos3 = new PID(KP = 2.5, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_pos4 = new PID(KP = 2.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_pos5 = new PID(KP = 1.5, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_pos6 = new PID(KP = 1.0, KI = 0.0, TD = 0.005, Cycle = 0.02);
+    pid_pos7 = new PID(KP = 1.5, KI = 0.0, TD = 0.005, Cycle = 0.02);
+/*
+    adder0 = new Sum(); 
+    adder1 = new Sum(); 
+    adder2 = new Sum();
+    adder3 = new Sum(); 
+    adder4 = new Sum(); 
+    adder5 = new Sum(); 
+    adder6 = new Sum();
+    adder7 = new Sum();
+
+    pid_vel0 = new PID(KP = 2.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_vel1 = new PID(KP = 2.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_vel2 = new PID(KP = 1.5, KI = 0.0, TD = 0.005, Cycle = 0.02);
+    pid_vel3 = new PID(KP = 1.5, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_vel4 = new PID(KP = 1.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_vel5 = new PID(KP = 1.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
+    pid_vel6 = new PID(KP = 0.8,KI = 0.0, TD = 0.005, Cycle = 0.02);
+    pid_vel7 = new PID(KP = 0.8, KI = 0.0, TD = 0.005, Cycle = 0.02);
+*/
+    set_motor = new SetMotor();
+
+    // Joint 0
+    desired0 -> pid_pos0.SP;
+    qpos0    -> pid_pos0.PV;
+    pid_pos0.XOut -> set_motor.motor0;
+   /* pid_pos0.XOut -> adder0.in1;
+    ff0     -> adder0.in2;
+
+    adder0.sum -> pid_vel0.SP;
+    qvel0      -> pid_vel0.PV;
+
+    pid_vel0.XOut -> set_motor.motor0;
+*/
+    // Repeat same structure for joints 1..6
+    desired1 -> pid_pos1.SP; 
+    qpos1 -> pid_pos1.PV; 
+    pid_pos1.XOut ->set_motor.motor1;
+  
+    /*
+    pid_pos1.XOut -> adder1.in1; 
+    ff1 -> adder1.in2;
+    adder1.sum -> pid_vel1.SP; 
+    qvel1 -> pid_vel1.PV;
+    pid_vel1.XOut -> set_motor.motor1;
+*/
+
+    desired2 -> pid_pos2.SP; 
+    qpos2 -> pid_pos2.PV; 
+    pid_pos2.XOut -> set_motor.motor2;
+    /*
+    pid_pos2.XOut -> adder2.in1; 
+    ff2 -> adder2.in2;
+    adder2.sum -> pid_vel2.SP; 
+    qvel2 -> pid_vel2.PV;
+    pid_vel2.XOut -> set_motor.motor2;
+    */
+
+    desired3 -> pid_pos3.SP; 
+    qpos3 -> pid_pos3.PV; 
+    pid_pos3.XOut -> set_motor.motor3;
+    /*
+    pid_pos3.XOut -> adder3.in1; 
+    ff3 -> adder3.in2;
+    adder3.sum -> pid_vel3.SP; 
+    qvel3 -> pid_vel3.PV;
+    pid_vel3.XOut -> set_motor.motor3;
+*/
+
+    desired4 -> pid_pos4.SP; 
+    qpos4 -> pid_pos4.PV; 
+     pid_pos4.XOut -> set_motor.motor4;
+     /*
+    pid_pos4.XOut -> adder4.in1; 
+    ff4 -> adder4.in2;
+    adder4.sum -> pid_vel4.SP; 
+    qvel4 -> pid_vel4.PV;
+    pid_vel4.XOut -> set_motor.motor4;
+    */
+
+    desired5 -> pid_pos5.SP; 
+    qpos5 -> pid_pos5.PV; 
+    pid_pos5.XOut -> set_motor.motor5;
+
+    /*
+    pid_pos5.XOut -> adder5.in1; 
+    ff5     -> adder5.in2;
+    adder5.sum -> pid_vel5.SP; 
+    qvel5 -> pid_vel5.PV;
+    pid_vel5.XOut -> set_motor.motor5;
+*/
+    desired6 -> pid_pos6.SP; 
+    qpos6 -> pid_pos6.PV; 
+    pid_pos6.XOut -> set_motor.motor6;
+    /*
+    pid_pos6.XOut -> adder6.in1; 
+    ff6 -> adder6.in2;
+    adder6.sum -> pid_vel6.SP; 
+    qvel6 -> pid_vel6.PV;
+    pid_vel6.XOut -> set_motor.motor6;
+    */
+    
+    desired7 -> pid_pos7.SP; 
+    qpos7 -> pid_pos7.PV; 
+    pid_pos7.XOut -> set_motor.motor7;
+    /*
+    pid_pos7.XOut -> adder7.in1; 
+    ff7 -> adder7.in2;
+    adder7.sum -> pid_vel7.SP; 
+    qvel7 -> pid_vel7.PV;
+    pid_vel7.XOut -> set_motor.motor7;
+    */
+}

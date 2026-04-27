@@ -1,0 +1,126 @@
+/*
+*   Receives joint state information from the MuJoCo
+*   simulation via TCP and converts it into Lingua Franca
+*   signals. Joint velocities are estimated numerically
+*   using finite differences.
+*
+* Responsibilities:
+*   - Maintain TCP connection to simulation
+*   - Parse incoming joint position messages
+*   - Compute joint velocities from successive samples
+*
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+ target C
+
+reactor RobotStateReceiver {
+    timer t(0,20 msec);
+
+    // ----------------------
+    // Outputs
+    // ----------------------
+    output qpos0: double; 
+    output qpos1: double; 
+    output qpos2: double;
+    output qpos3: double; 
+    output qpos4: double; 
+    output qpos5: double; 
+    output qpos6: double;
+    output qpos7: double;
+
+    output qvel0: double; 
+    output qvel1: double; 
+    output qvel2: double;
+    output qvel3: double; 
+    output qvel4: double; 
+    output qvel5: double; 
+    output qvel6: double;
+    output qvel7: double;
+
+    // ----------------------
+    // State
+    // ----------------------
+    state sock: int;
+    state last_q0: double = 0.0; 
+    state last_q1: double = 0.0; 
+    state last_q2: double = 0.0;
+    state last_q3: double = 0.0; 
+    state last_q4: double = 0.0; 
+    state last_q5: double = 0.0; 
+    state last_q6: double = 0.0;
+    state last_q7: double = 0.0;
+
+    preamble {=
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <string.h>
+        #include <arpa/inet.h>
+        #include <sys/socket.h>
+    =}
+
+    reaction(startup) {=
+        self->sock = socket(AF_INET, SOCK_STREAM, 0);
+
+        struct sockaddr_in serv;
+        memset(&serv, 0, sizeof(serv));
+        serv.sin_family = AF_INET;
+        serv.sin_port = htons(5555);
+        serv.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+        if(connect(self->sock, (struct sockaddr*)&serv,sizeof(serv)) < 0)
+            perror("connect failed");
+    =}
+
+    reaction(t)  -> qpos0, qpos1, qpos2, qpos3, qpos4, qpos5, qpos6, qpos7, qvel0, qvel1, qvel2, qvel3, qvel4, qvel5, qvel6, qvel7 {=
+        char buffer[512];
+        int n = recv(self->sock, buffer, sizeof(buffer)-1, 0);
+
+        if(n > 0) {
+            buffer[n] = '\0';
+
+            double q0, q1, q2, q3, q4, q5, q6, q7;
+            sscanf(buffer, "%lf %lf %lf %lf %lf %lf %lf %lf",
+                &q0, &q1, &q2, &q3, &q4, &q5, &q6, &q7);
+
+            double v0 = (q0 - self->last_q0)/0.01;
+            double v1 = (q1 - self->last_q1)/0.01;
+            double v2 = (q2 - self->last_q2)/0.01;
+            double v3 = (q3 - self->last_q3)/0.01;
+            double v4 = (q4 - self->last_q4)/0.01;
+            double v5 = (q5 - self->last_q5)/0.01;
+            double v6 = (q6 - self->last_q6)/0.01;
+            double v7 = (q7 - self->last_q7)/0.01;
+
+            lf_set(qpos0, q0); 
+            lf_set(qpos1, q1); 
+            lf_set(qpos2, q2);
+            lf_set(qpos3, q3); 
+            lf_set(qpos4, q4); 
+            lf_set(qpos5, q5); 
+            lf_set(qpos6, q6);
+            lf_set(qpos7, q7);
+
+            lf_set(qvel0, v0); 
+            lf_set(qvel1, v1); 
+            lf_set(qvel2, v2);
+            lf_set(qvel3, v3); 
+            lf_set(qvel4, v4); 
+            lf_set(qvel5, v5); 
+            lf_set(qvel6, v6);
+            lf_set(qvel7, v7);
+
+            self->last_q0 = q0; 
+            self->last_q1 = q1; 
+            self->last_q2 = q2;
+            self->last_q3 = q3; 
+            self->last_q4 = q4; 
+            self->last_q5 = q5; 
+            self->last_q6 = q6;
+            self->last_q7 = q7;
+        }
+    =}
+}

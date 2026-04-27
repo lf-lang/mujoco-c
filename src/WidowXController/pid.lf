@@ -1,0 +1,49 @@
+/*
+*   Implements a discrete-time PID controller used for both
+*   position and velocity control loops in the cascaded
+*   control architecture.
+*
+* Responsibilities:
+*   - Compute control signal from error input
+*   - Maintain internal integral and derivative state
+*   - Support configurable gains and cycle time
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+ 
+ target C
+
+reactor PID(KP: double = 0.0,
+KI: double = 0.0, TD: double = 0.0, Cycle: double
+= 0.02) {
+input SP: double;
+input PV: double;
+output XOut: double;
+
+state X1: double = 0.0;
+state X2: double = 0.0;
+state X3: double = 0.0;
+state iTerm: double = 0.0;
+
+reaction(SP, PV) -> XOut {=
+double error = SP->value - PV->value;
+self->iTerm = self->iTerm + error * self->Cycle;
+double dTerm = (error - self->X1) / self->Cycle;
+//double dTerm = (3.0*(error-self->X3)+self->X1-self->X2)/self->Cycle;
+self->X3 = self->X2;
+self->X2 = self->X1;
+self->X1 = error;
+double u = (error + self->KI * self->iTerm + self->TD * dTerm) * self->KP;
+
+// Clamp torque
+if (u > 50.0) u = 50.0;
+if (u < -50.0) u = -50.0;
+
+lf_set(XOut, u);
+
+printf("PID0 out: %f\n", XOut->value);
+=}
+}

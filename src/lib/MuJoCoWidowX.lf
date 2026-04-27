@@ -1,0 +1,25 @@
+target C
+
+import MuJoCoAuto from "MuJoCoAuto.lf"
+
+/**
+ * MuJoCo WidowX AI robot. 
+ * It has 2 arms where each of the has 6 joints
+ * and a gripper with 2 fingers, which are controlled by 8 actuators in total.
+ *
+ * @author Edward A. Lee
+ */
+reactor MuJoCoWidowX(
+    model_file: string = {= LF_SOURCE_DIRECTORY "/models/mujoco_menagerie/trossen_wxai/scene.xml" =})
+    extends MuJoCoAuto {
+  input[8] motorL: double
+  input[8] motorR: double
+  output[8] encoder: double
+  reaction(motorL) {=
+    advance_simulator();
+    for (int i = 0; i < 8; i++) {
+      self->context.d->ctrl[i] = motorL[i]->value;
+      self->context.d->ctrl[i] = motorR[i]->value;
+    }
+  =}
+}
