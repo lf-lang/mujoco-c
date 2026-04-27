@@ -214,23 +214,19 @@ reactor RobotControl(
 }
 
 main reactor controller{
-  m = new MuJoCoWidowX(sim_step = 10 ms, frame_period = 33 ms)
+  m = new MuJoCoWidowX(frame_period = 33 ms)
   cl = new[8] RobotControl(
       period = 100 ms,
       parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParameters.csv" =})
-  cr = new[8] RobotControl(
-      period = 100 ms,
-      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParameters.csv" =})
-
+  
   cl.command -> m.motorL;
-  cr.command -> m.motorR;
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
     lf_print("*** Type q to quit.\n");
   =}
 
-  reaction(m.key) -> m.restart, cl.restart, cr.restart {=
+  reaction(m.key) -> m.restart, cl.restart {=
     // If backspace: reset simulation
     // If q or Q: quit
     if (m.key->value.act==GLFW_PRESS) {
@@ -238,7 +234,6 @@ main reactor controller{
         lf_set(m.restart, true);
         for (int i = 0; i < 8; i++) {
           lf_set(cl[i].restart, true);
-          lf_set(cr[i].restart, true);
         }
       } else if (m.key->value.key==GLFW_KEY_Q) {
         lf_request_stop();

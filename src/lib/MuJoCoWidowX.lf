@@ -1,5 +1,7 @@
-target C
-
+target C {
+  keepalive: true,  // Because of physical action.
+  files: "../models/mujoco_menagerie/trossen_wxai"
+}
 import MuJoCoAuto from "MuJoCoAuto.lf"
 
 /**
@@ -9,17 +11,18 @@ import MuJoCoAuto from "MuJoCoAuto.lf"
  *
  * @author Edward A. Lee
  */
+ 
 reactor MuJoCoWidowX(
-    model_file: string = {= LF_SOURCE_DIRECTORY "/models/mujoco_menagerie/trossen_wxai/scene.xml" =})
+    model_file: string = {=
+      LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "trossen_wxai" LF_FILE_SEPARATOR "scene.xml"
+    =})
     extends MuJoCoAuto {
   input[8] motorL: double
-  input[8] motorR: double
   output[8] encoder: double
   reaction(motorL) {=
     advance_simulator();
     for (int i = 0; i < 8; i++) {
       self->context.d->ctrl[i] = motorL[i]->value;
-      self->context.d->ctrl[i] = motorR[i]->value;
     }
   =}
 }
