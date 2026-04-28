@@ -134,12 +134,12 @@ reactor MuJoCuEnvSim(
 
 reactor Car(
     auto_speed: double = 0.30,      // forward control in auto mode  [0..1]
-    kp: double = 2.5,
-    ki: double = 0.2,
-    kd: double = 1.5,
-    dt: time = 50 ms,               // sense_timer period and PID update interval
-    speed_kp:  double = 0.8,        // how aggressively to slow on curves
-    min_speed: double = 0.15,       // minimum forward control in auto mode 
+    kp: double = 2.0,
+    kd: double = 1.0,
+    dt: time = 50 ms,
+    speed_kp: double = 0.8,
+    min_speed: double = 0.15,
+    lost_threshold: double = 0.0295,  // min sensor reading above this → line lost (~0.025 on strip, ~0.030 on floor)
     speed_sensitivity: double = 0.05,
     turn_sensitivity: double = 0.01
 ) {
@@ -155,13 +155,12 @@ reactor Car(
   state speed: double = 0.0
   state turn: double = 0.0
   state auto_mode: bool = true
-  state integral: double = 0.0
   state prev_error: double = 0.0
-  state filtered_deriv: double = 0.0  // EMA-filtered derivative — suppresses 10 ms noise
+  state filtered_deriv: double = 0.0  // EMA-filtered derivative
+  state search_dir: double = 1.0      // rotation direction when line is lost
 
   initial mode Auto {
     reaction(sense_timer) -> sense {=
-      // Read the line sensors every timer period
       lf_set(sense, true);
     =}
 
@@ -174,11 +173,9 @@ reactor Car(
         self->auto_mode = !self->auto_mode;
         lf_print("*** Manual mode ON");
         lf_set(mode_change, self->auto_mode);
-
-        // Zero the actuators immediately — without this the last auto ctrl_cmd
-        // stays active in MuJoCo 
+        // MuJoCo retains the last ctrl[] value — zero explicitly on mode switch.
+        self->speed = 0.0;
         self->turn  = 0.0;
-        self->integral = 0.0;
         self->filtered_deriv = 0.0;
         control_command_t stop = {.forward = 0.0, .turn = 0.0};
         lf_set(ctrl_cmd, stop);
@@ -188,7 +185,7 @@ reactor Car(
 
     reaction(sensor_reading) -> ctrl_cmd {=
       printf("\r" PRINTF_TIME, lf_time_logical_elapsed());
-      printf("  LL:%.4f L:%.4f C:%.4f R:%.4f RR:%.4f [%s]",
+      printf("  LL:%.4f  L:%.4f  C:%.4f  R:%.4f  RR:%.4f [%s]",
           sensor_reading->value.line_ll,sensor_reading->value.line_l, 
           sensor_reading->value.line_c, 
           sensor_reading->value.line_r, sensor_reading->value.line_rr,
@@ -198,43 +195,50 @@ reactor Car(
       if (!self->auto_mode) return;
 
       double rr = sensor_reading->value.line_rr;
-      double r = sensor_reading->value.line_r;
-      double c = sensor_reading->value.line_c;
-      double l = sensor_reading->value.line_l;
+      double r  = sensor_reading->value.line_r;
+      double c  = sensor_reading->value.line_c;
+      double l  = sensor_reading->value.line_l;
       double ll = sensor_reading->value.line_ll;
+
+      // Lost-line detection: all sensors read ~0.030 m (floor); track strip gives ~0.025 m.
+      double min_s = ll < l ? ll : l;
+      if (c   < min_s) min_s = c;
+      if (r   < min_s) min_s = r;
+      if (rr  < min_s) min_s = rr;
+      if (min_s > self->lost_threshold) {
+        control_command_t cmd = {.forward = 0.0, .turn = self->search_dir * 0.2};
+        lf_set(ctrl_cmd, cmd);
+        return;
+      }
+
       double total = ll + l + c + r + rr;
-      double error = (-2*ll - 1*l + 0*c + 1*r + 2*rr) / (total + 1e-6);  // error in [-2,2], scaled by total signal to reduce noise when weak readings
+      double error = (-2*ll - l + r + 2*rr) / (total + 1e-6);
 
-      double proportional = error;
+      // Keep search direction current while tracking.
+      if      (error >  0.1) self->search_dir =  1.0;
+      else if (error < -0.1) self->search_dir = -1.0;
 
-      self->integral += error * self->dt / 1e9;  // dt is in nanoseconds, convert to seconds
-      if (self->integral >  1.0 / self->ki) self->integral =  1.0 / self->ki;
-      if (self->integral < -1.0 / self->ki) self->integral = -1.0 / self->ki;
-
-      // EMA (α=0.25): suppresses 10 ms jitter amplified by 1/dt=100×.
-      double raw_deriv     = (error - self->prev_error) / self->dt / 1e9;
+      // PD with EMA derivative (α=0.25 suppresses sensor noise amplified by 1/dt).
+      double dt_s = (double)self->dt * 1e-9;
+      double raw_deriv = (error - self->prev_error) / dt_s;
       self->filtered_deriv = 0.25 * raw_deriv + 0.75 * self->filtered_deriv;
-      self->prev_error     = error;
+      self->prev_error = error;
 
-      double ctrl_turn = self->kp * proportional
-                      + self->ki * self->integral
-                      + self->kd * self->filtered_deriv;
-
+      double ctrl_turn = self->kp * error + self->kd * self->filtered_deriv;
       if (ctrl_turn >  1.0) ctrl_turn =  1.0;
       if (ctrl_turn < -1.0) ctrl_turn = -1.0;
 
-      // Slow on curves, floor at min_speed.
+      // Smooth speed reduction on curves; floor at min_speed.
       double abs_error   = error < 0 ? -error : error;
-      double speed_scale = 1.0 - self->speed_kp * abs_error;
+      double speed_scale = 1.0 / (1.0 + self->speed_kp * abs_error);
       if (speed_scale < self->min_speed / self->auto_speed)
           speed_scale = self->min_speed / self->auto_speed;
 
-      double forward_speed = self->auto_speed * speed_scale;
-
-      control_command_t cmd = {.forward = forward_speed, .turn = ctrl_turn};
-
+      control_command_t cmd = {
+          .forward = self->auto_speed * speed_scale,
+          .turn    = ctrl_turn
+      };
       lf_set(ctrl_cmd, cmd);
-
     =}
   }
 
@@ -252,19 +256,10 @@ reactor Car(
         lf_set(mode_change, self->auto_mode);
         lf_set_mode(Auto);
       } else if (!self->auto_mode) {
-        if (key == 'U') {
-          self->speed += self->speed_sensitivity;
-          // lf_set(forward, self->speed);
-        } else if (key == 'D') {
-          self->speed -= self->speed_sensitivity;
-          // lf_set(forward, self->speed);
-        } else if (key == 'R') {
-          self->turn -= self->turn_sensitivity;
-          // lf_set(turn, self->turn);
-        } else if (key == 'L') {
-          self->turn += self->turn_sensitivity;
-          // lf_set(turn, self->turn);
-        }
+        if      (key == 'U') self->speed += self->speed_sensitivity;
+        else if (key == 'D') self->speed -= self->speed_sensitivity;
+        else if (key == 'R') self->turn  -= self->turn_sensitivity;
+        else if (key == 'L') self->turn  += self->turn_sensitivity;
       }
       control_command_t cmd = {.forward = self->speed, .turn = self->turn};
       lf_set(ctrl_cmd, cmd);
