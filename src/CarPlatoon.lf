@@ -1,12 +1,12 @@
 /**
  * Line-following platoon of three cars on a figure-8 track in MuJoCo.
  *
- * Cars a (lead), b (middle), c (rear) each run an independent PD line-following
- * controller.  Five downward rangefinders (ll, l, c, r, rr) feed each controller.
- * Sensor readings: ~0.025 m over track strip, ~0.030 m over bare floor.
- * Error = weighted lateral offset: (-2·ll - l + r + 2·rr) / (sum + ε)
+ * Each car runs a PD line-following controller with platoon gap control.
+ * Five line rangefinders (ll, l, c, r, rr): ~0.025 m on track, ~0.030 m on floor.
+ * Lateral error: (-2·ll - l + r + 2·rr) / (sum + ε)
+ * Front/rear rangefinders (cutoff 1.0 m) maintain spacing and trigger emergency stops.
  *
- * Keys: M toggle auto/manual  ↑↓←→ manual drive  Backspace reset  Q quit
+ * Keys: M auto/manual  ↑↓←→ manual drive  Backspace reset  Q quit
  *
  * @author Chadlia Jerad
  */
@@ -205,7 +205,6 @@ reactor Car(
       } else if (key == 'M') {
         self->auto_mode = !self->auto_mode;
         lf_set(mode_change, self->auto_mode);
-        // MuJoCo retains the last ctrl[] value — zero explicitly on mode switch.
         self->speed = 0.0;
         self->turn  = 0.0;
         self->filtered_deriv = 0.0;
@@ -238,7 +237,7 @@ reactor Car(
       double l  = sensor_reading->value.line_l;
       double ll = sensor_reading->value.line_ll;
 
-      // Lost-line detection: all sensors read ~0.030 m (floor); track strip gives ~0.025 m.
+      // Line lost when every sensor reads floor level (> lost_threshold).
       double min_s = ll < l ? ll : l;
       if (c  < min_s) min_s = c;
       if (r  < min_s) min_s = r;
@@ -255,7 +254,7 @@ reactor Car(
       if      (error >  0.1) self->search_dir =  1.0;
       else if (error < -0.1) self->search_dir = -1.0;
 
-      // PD with EMA derivative (α=0.25 suppresses sensor noise amplified by 1/dt).
+      // PD with EMA-filtered derivative (α=0.25).
       double dt_s = (double)self->dt * 1e-9;
       double raw_deriv = (error - self->prev_error) / dt_s;
       self->filtered_deriv = 0.25 * raw_deriv + 0.75 * self->filtered_deriv;
@@ -265,8 +264,7 @@ reactor Car(
       if (ctrl_turn >  1.0) ctrl_turn =  1.0;
       if (ctrl_turn < -1.0) ctrl_turn = -1.0;
 
-      // Gap-keeping: adjust target speed based on front/rear car distances.
-      // Rangefinder returns -1 when no surface hit within cutoff → ignore.
+      // Gap-keeping: rangefinder returns -1 when no car in range → skip.
       double target_speed = self->auto_speed;
       double dist_r = sensor_reading->value.dist_rear;
 
@@ -276,7 +274,7 @@ reactor Car(
         if (target_speed < 0.0)               target_speed = 0.0;
         if (target_speed > self->auto_speed)  target_speed = self->auto_speed;
       }
-      // If rear car is dangerously close, add a small defensive boost.
+      // Rear car too close: small defensive speed boost.
       if (dist_r >= 0.0 && dist_r < self->desired_gap * 0.5) {
         double boost = self->gap_kp * (self->desired_gap * 0.5 - dist_r);
         target_speed += boost;
@@ -323,7 +321,7 @@ reactor Car(
 
 main reactor {
   m  = new MuJoCuEnvSim()
-  c = new [3] Car()   // lead   — prefix a_; middle — prefix b_ ; rear   — prefix c_
+  c = new [3] Car()   // a_=lead, b_=middle, c_=rear
 
   c.sense -> m.sense
   m.sensor_reading -> c.sensor_reading
@@ -352,8 +350,10 @@ main reactor {
 
     if (cmd != 0) {
       lf_set(c[0].key_cmd, cmd);
-      lf_set(c[1].key_cmd, cmd);
-      lf_set(c[2].key_cmd, cmd);
+      if (cmd != 'M') {  // mode toggle only from lead car
+        lf_set(c[1].key_cmd, cmd);
+        lf_set(c[2].key_cmd, cmd);
+      }
     }
   =}
 
