@@ -36,6 +36,8 @@ preamble {=
     int line_c_address;
     int line_r_address;
     int line_rr_address;
+    int dist_front_address;
+    int dist_rear_address;
   } car_addresses_t;
 =}
 
@@ -54,11 +56,13 @@ reactor MuJoCuEnvSim(
 
   method read_sensors(i: int) : sensor_reading_t {=
     sensor_reading_t rs = {
-      .line_ll = self->context.d->sensordata[self->addrs[i].line_ll_address],
-      .line_l  = self->context.d->sensordata[self->addrs[i].line_l_address],
-      .line_c  = self->context.d->sensordata[self->addrs[i].line_c_address],
-      .line_r  = self->context.d->sensordata[self->addrs[i].line_r_address],
-      .line_rr = self->context.d->sensordata[self->addrs[i].line_rr_address],
+      .line_ll    = self->context.d->sensordata[self->addrs[i].line_ll_address],
+      .line_l     = self->context.d->sensordata[self->addrs[i].line_l_address],
+      .line_c     = self->context.d->sensordata[self->addrs[i].line_c_address],
+      .line_r     = self->context.d->sensordata[self->addrs[i].line_r_address],
+      .line_rr    = self->context.d->sensordata[self->addrs[i].line_rr_address],
+      .dist_front = self->context.d->sensordata[self->addrs[i].dist_front_address],
+      .dist_rear  = self->context.d->sensordata[self->addrs[i].dist_rear_address],
     };
     return rs;
   =}
@@ -93,6 +97,21 @@ reactor MuJoCuEnvSim(
           return;
         }
         *adr[s] = self->context.m->sensor_adr[idx];
+      }
+
+      static const char *dist_names[2] = {"dist_front", "dist_rear"};
+      int *dist_adr[2] = {
+        &self->addrs[i].dist_front_address, &self->addrs[i].dist_rear_address
+      };
+      for (int s = 0; s < 2; s++) {
+        snprintf(name, sizeof(name), "%s%s", prefixes[i], dist_names[s]);
+        int idx = mj_name2id(self->context.m, mjOBJ_SENSOR, name);
+        if (idx < 0 || self->context.m->sensor_dim[idx] != 1) {
+          lf_print_error("Car %d: bad sensor '%s'.", i, name);
+          lf_request_stop();
+          return;
+        }
+        *dist_adr[s] = self->context.m->sensor_adr[idx];
       }
     }
   =}
@@ -150,7 +169,11 @@ reactor Car(
     min_speed: double = 0.15,
     lost_threshold: double = 0.0295,  // min sensor reading above this → line lost
     speed_sensitivity: double = 0.05,
-    turn_sensitivity: double = 0.01
+    turn_sensitivity: double = 0.01,
+    desired_gap: double = 0.30,       // target gap to front car (m)
+    gap_kp: double = 0.5,             // proportional gain for gap control
+    stop_distance: double = 0.15,     // emergency stop when front car closer than this (m)
+    safe_distance: double = 0.22      // resume only when front car farther than this (m)
 ) {
 
   timer sense_timer(0, dt)
@@ -167,6 +190,7 @@ reactor Car(
   state prev_error: double = 0.0
   state filtered_deriv: double = 0.0  // EMA-filtered derivative
   state search_dir: double = 1.0      // rotation direction when line is lost
+  state emergency_stop: bool = false  // latched when front gap < stop_distance
 
   initial mode Auto {
     reaction(sense_timer) -> sense {=
@@ -193,6 +217,20 @@ reactor Car(
 
     reaction(sensor_reading) -> ctrl_cmd {=
       if (!self->auto_mode) return;
+
+      // Emergency stop: latch when front car too close; release with hysteresis.
+      double dist_f = sensor_reading->value.dist_front;
+      if (dist_f >= 0.0 && dist_f < self->stop_distance) {
+        self->emergency_stop = true;
+      } else if (self->emergency_stop && (dist_f < 0.0 || dist_f >= self->safe_distance)) {
+        self->emergency_stop = false;
+        self->filtered_deriv = 0.0;  // avoid derivative spike on resume
+      }
+      if (self->emergency_stop) {
+        control_command_t cmd = {.forward = 0.0, .turn = 0.0};
+        lf_set(ctrl_cmd, cmd);
+        return;
+      }
 
       double rr = sensor_reading->value.line_rr;
       double r  = sensor_reading->value.line_r;
@@ -227,14 +265,32 @@ reactor Car(
       if (ctrl_turn >  1.0) ctrl_turn =  1.0;
       if (ctrl_turn < -1.0) ctrl_turn = -1.0;
 
+      // Gap-keeping: adjust target speed based on front/rear car distances.
+      // Rangefinder returns -1 when no surface hit within cutoff → ignore.
+      double target_speed = self->auto_speed;
+      double dist_r = sensor_reading->value.dist_rear;
+
+      if (dist_f >= 0.0) {
+        double gap_error = dist_f - self->desired_gap;
+        target_speed += self->gap_kp * gap_error;
+        if (target_speed < 0.0)               target_speed = 0.0;
+        if (target_speed > self->auto_speed)  target_speed = self->auto_speed;
+      }
+      // If rear car is dangerously close, add a small defensive boost.
+      if (dist_r >= 0.0 && dist_r < self->desired_gap * 0.5) {
+        double boost = self->gap_kp * (self->desired_gap * 0.5 - dist_r);
+        target_speed += boost;
+        if (target_speed > self->auto_speed * 1.2) target_speed = self->auto_speed * 1.2;
+      }
+
       // Smooth speed reduction on curves; floor at min_speed.
       double abs_error   = error < 0 ? -error : error;
       double speed_scale = 1.0 / (1.0 + self->speed_kp * abs_error);
-      if (speed_scale < self->min_speed / self->auto_speed)
-          speed_scale = self->min_speed / self->auto_speed;
+      if (speed_scale < self->min_speed / target_speed)
+          speed_scale = self->min_speed / target_speed;
 
       control_command_t cmd = {
-          .forward = self->auto_speed * speed_scale,
+          .forward = target_speed * speed_scale,
           .turn    = ctrl_turn
       };
       lf_set(ctrl_cmd, cmd);
