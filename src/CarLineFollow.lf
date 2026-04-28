@@ -137,13 +137,14 @@ reactor Car(
     kp: double = 2.5,
     ki: double = 0.2,
     kd: double = 1.5,
+    dt: time = 50 ms,               // sense_timer period and PID update interval
     speed_kp:  double = 0.8,        // how aggressively to slow on curves
-    min_speed: double = 0.15,       // minimum forward control in auto mode (must be < auto_speed)
+    min_speed: double = 0.15,       // minimum forward control in auto mode 
     speed_sensitivity: double = 0.05,
     turn_sensitivity: double = 0.01
 ) {
 
-  timer sense_timer(0, 50 ms)
+  timer sense_timer(0, dt)
   input sensor_reading: sensor_reading_t
   input key_cmd: int
 
@@ -204,16 +205,14 @@ reactor Car(
       double total = ll + l + c + r + rr;
       double error = (-2*ll - 1*l + 0*c + 1*r + 2*rr) / (total + 1e-6);  // error in [-2,2], scaled by total signal to reduce noise when weak readings
 
-      double dt = 0.05;  // matches sense_timer period (50 ms)
-
       double proportional = error;
 
-      self->integral += error * dt;
+      self->integral += error * self->dt / 1e9;  // dt is in nanoseconds, convert to seconds
       if (self->integral >  1.0 / self->ki) self->integral =  1.0 / self->ki;
       if (self->integral < -1.0 / self->ki) self->integral = -1.0 / self->ki;
 
       // EMA (α=0.25): suppresses 10 ms jitter amplified by 1/dt=100×.
-      double raw_deriv     = (error - self->prev_error) / dt;
+      double raw_deriv     = (error - self->prev_error) / self->dt / 1e9;
       self->filtered_deriv = 0.25 * raw_deriv + 0.75 * self->filtered_deriv;
       self->prev_error     = error;
 
