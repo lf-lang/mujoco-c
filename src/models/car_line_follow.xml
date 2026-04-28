@@ -1,0 +1,62 @@
+<mujoco>
+  <!--
+    car_line_follow.xml — single-car line-following environment.
+    Composes track.xml with car_sensor_rich.xml via <attach prefix="car_">.
+    All sensor/actuator names are prefixed: car_forward, car_turn, car_line_ll, …
+    Note: <attach> does not copy <default> classes, so wheel/decor/dist_sensor
+    are redeclared here.
+  -->
+
+  <compiler autolimits="true"/>
+  <option timestep="0.001"/>
+  <option integrator="implicitfast"/>
+
+  <visual>
+    <headlight ambient=".6 .6 .6" diffuse=".8 .8 .8" specular="0 0 0"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512"
+             rgb1=".65 .65 .65" rgb2=".80 .80 .80"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".4"/>
+
+    <model name="car" file="car_sensor_rich.xml"/>
+  </asset>
+
+  <default>
+    <joint damping=".03" actuatorfrcrange="-0.5 0.5"/>
+    <default class="wheel">
+      <geom type="cylinder" size=".03 .01" rgba=".5 .5 1 1"/>
+    </default>
+    <default class="decor">
+      <site type="box" rgba=".5 1 .5 1"/>
+    </default>
+    <default class="dist_sensor">
+      <site type="sphere" size=".004" rgba="1 .3 .3 1"/>
+    </default>
+    <!--
+      Track geoms are non-collidable (contype/conaffinity=0) so the car passes over them
+      without bumping. mj_ray (used by rangefinder sensors) ignores collision filtering,
+      so the sensors still detect these geoms.
+    -->
+    <default class="track">
+      <geom type="box" rgba="0.05 0.05 0.05 1" contype="0" conaffinity="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <include file="track.xml"/>
+
+    <!-- Fixed overhead lights — illuminate the full figure-8 track evenly -->
+    <light name="overhead center" pos=" 0    0   2.0" dir="0 0 -1" diffuse=".1 .1 .1" specular="0 0 0"/>
+    <light name="overhead right"  pos=" 0.6  0   1.5" dir="0 0 -1" diffuse=".1 .1 .1" specular="0 0 0"/>
+    <light name="overhead left"   pos="-0.6  0   1.5" dir="0 0 -1" diffuse=".1 .1 .1" specular="0 0 0"/>
+
+    <!-- Car body on the top-right straight, facing +x -->
+    <frame name="car_frame" pos="0.9 0.6 0.03">
+      <attach model="car" body="car" prefix="car_"/>
+    </frame>
+  </worldbody>
+
+
+</mujoco>

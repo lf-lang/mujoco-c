@@ -1,0 +1,102 @@
+<!--
+  car_sensor_rich.xml — car body with 5 line sensors and 2 distance sensors.
+  Used via <attach> in a parent model (e.g. car_line_follow.xml, carPlatoon.xml).
+  Provides: chasis mesh, freejoint body, tendon/actuator (forward/turn),
+    rangefinders line_ll/l/c/r/rr (cutoff 0.05 m) and dist_front/rear (cutoff 1.0 m).
+  The parent must declare the track default class and ground plane.
+-->
+<mujoco model="carSensorRich">
+  <compiler autolimits="true"/>
+
+  <asset>
+    <mesh name="chasis" scale=".01 .006 .0015"
+      vertex=" 9   2   0
+              -10  10  10
+               9  -2   0
+               10  3  -10
+               10 -3  -10
+              -8   10 -10
+              -10 -10  10
+              -8  -10 -10
+              -5   0   20"/>
+  </asset>
+
+  <default>
+    <joint damping=".03" actuatorfrcrange="-0.5 0.5"/>
+    <default class="wheel">
+      <geom type="cylinder" size=".03 .01" rgba=".5 .5 1 1"/>
+    </default>
+    <default class="decor">
+      <site type="box" rgba=".5 1 .5 1"/>
+    </default>
+    <default class="dist_sensor">
+      <site type="sphere" size=".004" rgba="1 .3 .3 1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="car" pos="0 0 0">
+      <freejoint/>
+      <light name="top light" pos="0 0 2" mode="trackcom" diffuse=".25 .25 .25"/>
+      <geom name="chasis" type="mesh" mesh="chasis"/>
+      <!-- front wheel: raise radius to match rear -->
+      <geom name="front wheel" pos=".08 0 -.005" type="sphere" size=".025" condim="1" priority="1"/>
+      <light name="front light" pos=".1 0 .02" dir="2 0 -1" diffuse="1 1 1"/>
+
+      <body name="left wheel" pos="-.07 .06 0" zaxis="0 1 0">
+        <joint name="left"/>
+        <geom class="wheel"/>
+        <site class="decor" size=".006 .025 .012"/>
+        <site class="decor" size=".025 .006 .012"/>
+      </body>
+      <body name="right wheel" pos="-.07 -.06 0" zaxis="0 1 0">
+        <joint name="right"/>
+        <geom class="wheel"/>
+        <site class="decor" size=".006 .025 .012"/>
+        <site class="decor" size=".025 .006 .012"/>
+      </body>
+
+      <!-- 5 line sensors at ±10 mm and ±25 mm; euler "180 0 0" aims z toward floor -->
+      <site name="line_ll_site" pos=".08  .025 0" euler="180 0 0"/>
+      <site name="line_l_site"  pos=".08  .010 0" euler="180 0 0"/>
+      <site name="line_c_site"  pos=".08  .000 0" euler="180 0 0"/>
+      <site name="line_r_site"  pos=".08 -.010 0" euler="180 0 0"/>
+      <site name="line_rr_site" pos=".08 -.025 0" euler="180 0 0"/>
+
+      <!-- Distance sensors: euler "0 ±90 0" aligns site z with car ±x -->
+      <site name="dist_front_site" class="dist_sensor"
+            pos=".11  0  .01" euler="0 -90 0"/>
+      <site name="dist_rear_site"  class="dist_sensor"
+            pos="-.11 0  .01" euler="0  90 0"/>
+    </body>
+  </worldbody>
+
+  <tendon>
+    <fixed name="forward">
+      <joint joint="left"  coef=".5"/>
+      <joint joint="right" coef=".5"/>
+    </fixed>
+    <fixed name="turn">
+      <joint joint="left"  coef="-.5"/>
+      <joint joint="right" coef=".5"/>
+    </fixed>
+  </tendon>
+
+  <actuator>
+    <motor name="forward" tendon="forward" ctrlrange="-1 1"/>
+    <motor name="turn"    tendon="turn"    ctrlrange="-1 1"/>
+  </actuator>
+
+  <sensor>
+    <!-- cutoff 0.05 m: above bare-floor reading (~0.030 m); -1 if ray misses all surfaces -->
+    <rangefinder name="line_ll" site="line_ll_site" cutoff="0.05"/>
+    <rangefinder name="line_l"  site="line_l_site"  cutoff="0.05"/>
+    <rangefinder name="line_c"  site="line_c_site"  cutoff="0.05"/>
+    <rangefinder name="line_r"  site="line_r_site"  cutoff="0.05"/>
+    <rangefinder name="line_rr" site="line_rr_site" cutoff="0.05"/>
+    <!-- cutoff 1.0 m: suitable for platoon spacing (~0.3 m gaps) -->
+    <rangefinder name="dist_front" site="dist_front_site" cutoff="1.0"/>
+    <rangefinder name="dist_rear"  site="dist_rear_site"  cutoff="1.0"/>
+  </sensor>
+
+</mujoco>

@@ -1,0 +1,61 @@
+<!--
+  track.xml — figure-8 track, 1.5x scale, 45-deg chamfered corners, connected crossing.
+  Designed to be <include>-d inside a <worldbody> block.
+  Requires the parent model to declare:
+    <default class="track">
+      <geom type="box" rgba="0.05 0.05 0.05 1" contype="0" conaffinity="0"/>
+    </default>
+
+  Layout
+  ──────
+  Right loop : x in [0.15, 1.65]  y in [-0.60, 0.60]
+  Left  loop : x in [-1.65, -0.15]  y in [-0.60, 0.60]
+  Crossing X : diagonals from (±0.15, ∓0.60) through origin
+  Corners    : 45-deg chamfer size=0.090 m
+  Strip      : half-width=0.018 m  half-height=0.0025 m
+
+  Car spawn hint: pos="0.86 0.60 0.03"
+-->
+
+<mujocoinclude>
+  <!-- Ground plane -->
+  <geom type="plane" size="4 4 .01" material="grid"/>
+
+  <!-- ── Right loop ── -->
+  <!-- top straight: x_inner → x_outer-chamfer -->
+  <geom class="track" pos="0.8550 0.6000 0.0025" size="0.7050 0.018 0.0025"/>
+  <!-- bottom straight -->
+  <geom class="track" pos="0.8550 -0.6000 0.0025" size="0.7050 0.018 0.0025"/>
+  <!-- right side: y_bot+chamfer → y_top-chamfer -->
+  <geom class="track" pos="1.6500 0.0000 0.0025" size="0.018 0.5100 0.0025"/>
+  <!-- corner TR: 45-deg at (x_outer-chamfer/2, y_top-chamfer/2) -->
+  <geom class="track" pos="1.6050 0.5550 0.0025" size="0.0636 0.018 0.0025" euler="0 0 -45"/>
+  <!-- corner BR: 45-deg at (x_outer-chamfer/2, y_bot+chamfer/2) -->
+  <geom class="track" pos="1.6050 -0.5550 0.0025" size="0.0636 0.018 0.0025" euler="0 0  45"/>
+
+  <!-- ── Left loop ── -->
+  <!-- top straight: -x_outer+chamfer → -x_inner -->
+  <geom class="track" pos="-0.8550 0.6000 0.0025" size="0.7050 0.018 0.0025"/>
+  <!-- bottom straight -->
+  <geom class="track" pos="-0.8550 -0.6000 0.0025" size="0.7050 0.018 0.0025"/>
+  <!-- left side -->
+  <geom class="track" pos="-1.6500 0.0000 0.0025" size="0.018 0.5100 0.0025"/>
+  <!-- corner TL -->
+  <geom class="track" pos="-1.6050 0.5550 0.0025" size="0.0636 0.018 0.0025" euler="0 0  45"/>
+  <!-- corner BL -->
+  <geom class="track" pos="-1.6050 -0.5550 0.0025" size="0.0636 0.018 0.0025" euler="0 0 -45"/>
+
+  <!-- ── Crossing diagonals at origin ── -->
+  <!--  A: ( 0.15, -0.60) → (-0.15, 0.60)  angle=104.0deg -->
+  <!--  B: (-0.15, -0.60) → ( 0.15, 0.60)  angle=76.0deg -->
+  <geom class="track" pos="0 0 0.0025" size="0.6185 0.018 0.0025" euler="0 0 104.04"/>
+  <geom class="track" pos="0 0 0.0025" size="0.6185 0.018 0.0025" euler="0 0 75.96"/>
+
+  <!-- ── Junction connectors: diagonals meet loop straights ── -->
+  <!-- These small squares bridge the diagonal tip to the straight end -->
+  <geom class="track" pos=" 0.1500  0.6000 0.0025" size="0.018 0.018 0.0025"/>
+  <geom class="track" pos=" 0.1500  -0.6000 0.0025" size="0.018 0.018 0.0025"/>
+  <geom class="track" pos="-0.1500  0.6000 0.0025" size="0.018 0.018 0.0025"/>
+  <geom class="track" pos="-0.1500  -0.6000 0.0025" size="0.018 0.018 0.0025"/>
+
+</mujocoinclude>

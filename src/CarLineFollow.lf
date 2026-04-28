@@ -1,0 +1,323 @@
+/**
+ * Line-following car on a figure-8 track in MuJoCo.
+ *
+ * Five downward rangefinders (ll, l, c, r, rr) feed a PID controller.
+ * Sensor readings: ~0.025 m over track strip, ~0.030 m over bare floor.
+ * Error = weighted lateral offset: (-2·ll - l + r + 2·rr) / (sum + ε)
+ *   > 0 → drifted left  → turn right
+ *   < 0 → drifted right → turn left
+ *
+ * Keys: M toggle auto/manual  ↑↓←→ manual drive  Backspace reset  Q quit
+ *
+ * @author Chadlia Jerad
+ */
+target C {
+  keepalive: true,
+  files: ["models/car_line_follow.xml", "models/track.xml", "models/car_sensor_rich.xml"]
+}
+
+import MuJoCoAuto from "lib/MuJoCoAuto.lf"
+
+preamble {=
+  typedef struct {
+    double line_ll, line_l, line_c, line_r, line_rr;
+  } sensor_reading_t;
+
+  typedef struct {
+    double forward;      /* [0..1] */
+    double turn;         /* [-1..1] */
+  } control_command_t;
+=}
+
+reactor MuJoCuEnvSim(
+    model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "car_line_follow.xml" =}
+) extends MuJoCoAuto {
+
+  input sense: bool
+  input mode_change: bool
+
+  output sensor_reading: sensor_reading_t
+  input ctrl_cmd: control_command_t
+
+  state forward_index: int = 0
+  state turn_index: int = 0
+  state line_ll_address: int = 0
+  state line_l_address: int = 0
+  state line_c_address: int = 0
+  state line_r_address: int = 0
+  state line_rr_address: int = 0
+  state sensor_values: sensor_reading_t = {0};
+  state auto_mode: bool = true
+  state step_count: int = 0
+
+  method read_sensors() : sensor_reading_t {=
+    sensor_reading_t rs = {
+      .line_ll = self->context.d->sensordata[self->line_ll_address],
+      .line_l = self->context.d->sensordata[self->line_l_address],
+      .line_c = self->context.d->sensordata[self->line_c_address],
+      .line_r = self->context.d->sensordata[self->line_r_address],
+      .line_rr = self->context.d->sensordata[self->line_rr_address],
+    };
+    return rs;
+  =}
+
+  reaction(startup) {=
+    self->forward_index = mj_name2id(self->context.m, mjOBJ_ACTUATOR, "car_forward");
+    self->turn_index    = mj_name2id(self->context.m, mjOBJ_ACTUATOR, "car_turn");
+    int ll_idx         = mj_name2id(self->context.m, mjOBJ_SENSOR, "car_line_ll");
+    int l_idx          = mj_name2id(self->context.m, mjOBJ_SENSOR, "car_line_l");
+    int c_idx         = mj_name2id(self->context.m, mjOBJ_SENSOR, "car_line_c");
+    int r_idx         = mj_name2id(self->context.m, mjOBJ_SENSOR, "car_line_r");
+    int rr_idx         = mj_name2id(self->context.m, mjOBJ_SENSOR, "car_line_rr");
+
+    if (self->forward_index < 0 || self->turn_index < 0 ||
+        ll_idx < 0 || l_idx < 0 || c_idx < 0 || r_idx < 0 || rr_idx < 0) {
+      lf_print_error("Mismatched model file. Missing sensors or actuators.");
+      lf_request_stop();
+      return;
+    }
+    if (self->context.m->sensor_dim[ll_idx]    != 1 ||
+        self->context.m->sensor_dim[l_idx]     != 1 ||
+        self->context.m->sensor_dim[c_idx]    != 1 ||
+        self->context.m->sensor_dim[r_idx]    != 1 ||
+        self->context.m->sensor_dim[rr_idx]    != 1) {
+      lf_print_error("Mismatched model file. Expected scalar sensors.");
+      lf_request_stop();
+      return;
+    }
+
+    self->line_ll_address  = self->context.m->sensor_adr[ll_idx];
+    self->line_l_address = self->context.m->sensor_adr[l_idx];
+    self->line_c_address = self->context.m->sensor_adr[c_idx];
+    self->line_r_address = self->context.m->sensor_adr[r_idx];
+    self->line_rr_address = self->context.m->sensor_adr[rr_idx];
+  =}
+
+  reaction(restart) {=
+    self->context.d->ctrl[self->forward_index] = 0.0;
+    self->context.d->ctrl[self->turn_index]    = 0.0;
+  =}
+
+  reaction(physics_timer) {=
+    self->step_count++;
+    self->sensor_values = read_sensors();
+
+    if (self->step_count % 1000 == 0) {
+      snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE,
+              "Time=%6.1fs: LL:%.4f L:%.4f C:%.4f R:%.4f RR:%.4f [%s]",
+              lf_time_logical_elapsed() / 1e9,
+              self->sensor_values.line_ll,self->sensor_values.line_l, 
+              self->sensor_values.line_c, 
+              self->sensor_values.line_r, self->sensor_values.line_rr,
+              self->auto_mode ? "AUTO" : "MANUAL");
+    }
+
+  =}
+
+  reaction(sense) -> sensor_reading {=
+    self->sensor_values = read_sensors();
+    lf_set(sensor_reading, self->sensor_values);
+  =}
+
+  reaction(ctrl_cmd) {=
+    self->context.d->ctrl[self->forward_index] = ctrl_cmd->value.forward;
+    self->context.d->ctrl[self->turn_index] = ctrl_cmd->value.turn;
+  =}
+
+  reaction(mode_change) {=
+    self->auto_mode = mode_change->value;
+    lf_print("====mode changed to %d", self->auto_mode);
+  =}
+
+}
+
+
+reactor Car(
+    auto_speed: double = 0.30,      // forward control in auto mode  [0..1]
+    kp: double = 2.5,
+    ki: double = 0.2,
+    kd: double = 1.5,
+    speed_kp:  double = 0.8,        // how aggressively to slow on curves
+    min_speed: double = 0.15,       // minimum forward control in auto mode (must be < auto_speed)
+    speed_sensitivity: double = 0.05,
+    turn_sensitivity: double = 0.01
+) {
+
+  timer sense_timer(0, 10 ms)
+  input sensor_reading: sensor_reading_t
+  input key_cmd: int
+
+  output sense: bool
+  output mode_change: bool
+  output ctrl_cmd: control_command_t
+
+  state speed: double = 0.0
+  state turn: double = 0.0
+  state auto_mode: bool = true
+  state integral: double = 0.0
+  state prev_error: double = 0.0
+  state filtered_deriv: double = 0.0  // EMA-filtered derivative — suppresses 10 ms noise
+
+  initial mode Auto {
+    reaction(sense_timer) -> sense {=
+      // Read the line sensors every timer period
+      lf_set(sense, true);
+    =}
+
+    reaction(key_cmd) -> Manual, mode_change, ctrl_cmd {=
+      int key = key_cmd->value;
+      if (key == 'Z') {
+        self->speed = 0.0;
+        self->turn  = 0.0;
+      } else if (key == 'M') {
+        self->auto_mode = !self->auto_mode;
+        lf_print("*** Manual mode ON");
+        lf_set(mode_change, self->auto_mode);
+
+        // Zero the actuators immediately — without this the last auto ctrl_cmd
+        // stays active in MuJoCo 
+        self->turn  = 0.0;
+        self->integral = 0.0;
+        self->filtered_deriv = 0.0;
+        control_command_t stop = {.forward = 0.0, .turn = 0.0};
+        lf_set(ctrl_cmd, stop);
+        lf_set_mode(Manual);
+      }
+    =}
+
+    reaction(sensor_reading) -> ctrl_cmd {=
+      printf("\r" PRINTF_TIME, lf_time_logical_elapsed());
+      printf("  LL:%.4f L:%.4f C:%.4f R:%.4f RR:%.4f [%s]",
+          sensor_reading->value.line_ll,sensor_reading->value.line_l, 
+          sensor_reading->value.line_c, 
+          sensor_reading->value.line_r, sensor_reading->value.line_rr,
+          self->auto_mode ? "AUTO" : "MANUAL");
+      fflush(stdout);
+
+      if (!self->auto_mode) return;
+
+      double rr = sensor_reading->value.line_rr;
+      double r = sensor_reading->value.line_r;
+      double c = sensor_reading->value.line_c;
+      double l = sensor_reading->value.line_l;
+      double ll = sensor_reading->value.line_ll;
+      double total = ll + l + c + r + rr;
+      double error = (-2*ll - 1*l + 0*c + 1*r + 2*rr) / (total + 1e-6);  // error in [-2,2], scaled by total signal to reduce noise when weak readings
+
+      double dt = 0.01;  // matches sense_timer period (10 ms)
+
+      double proportional = error;
+
+      self->integral += error * dt;
+      if (self->integral >  1.0 / self->ki) self->integral =  1.0 / self->ki;
+      if (self->integral < -1.0 / self->ki) self->integral = -1.0 / self->ki;
+
+      // EMA (α=0.25): suppresses 10 ms jitter amplified by 1/dt=100×.
+      double raw_deriv     = (error - self->prev_error) / dt;
+      self->filtered_deriv = 0.25 * raw_deriv + 0.75 * self->filtered_deriv;
+      self->prev_error     = error;
+
+      double ctrl_turn = self->kp * proportional
+                      + self->ki * self->integral
+                      + self->kd * self->filtered_deriv;
+
+      if (ctrl_turn >  1.0) ctrl_turn =  1.0;
+      if (ctrl_turn < -1.0) ctrl_turn = -1.0;
+
+      // Slow on curves, floor at min_speed.
+      double abs_error   = error < 0 ? -error : error;
+      double speed_scale = 1.0 - self->speed_kp * abs_error;
+      if (speed_scale < self->min_speed / self->auto_speed)
+          speed_scale = self->min_speed / self->auto_speed;
+
+      double forward_speed = self->auto_speed * speed_scale;
+
+      control_command_t cmd = {.forward = forward_speed, .turn = ctrl_turn};
+
+      lf_set(ctrl_cmd, cmd);
+
+    =}
+  }
+
+  mode Manual {
+    reaction(key_cmd) -> ctrl_cmd, Auto, mode_change {=
+      int key = key_cmd->value;
+      if (key == 'Z') {
+        self->speed = 0.0;
+        self->turn  = 0.0;
+      } else if (key == 'M') {
+        self->auto_mode = !self->auto_mode;
+        lf_print("*** Auto mode ON");
+        self->speed = 0.0;
+        self->turn  = 0.0;
+        lf_set(mode_change, self->auto_mode);
+        lf_set_mode(Auto);
+      } else if (!self->auto_mode) {
+        if (key == 'U') {
+          self->speed += self->speed_sensitivity;
+          // lf_set(forward, self->speed);
+        } else if (key == 'D') {
+          self->speed -= self->speed_sensitivity;
+          // lf_set(forward, self->speed);
+        } else if (key == 'R') {
+          self->turn -= self->turn_sensitivity;
+          // lf_set(turn, self->turn);
+        } else if (key == 'L') {
+          self->turn += self->turn_sensitivity;
+          // lf_set(turn, self->turn);
+        }
+      }
+      control_command_t cmd = {.forward = self->speed, .turn = self->turn};
+      lf_set(ctrl_cmd, cmd);
+    =}
+
+  }
+
+}
+
+main reactor {
+  m = new MuJoCuEnvSim()
+  c = new Car()
+
+  c.sense -> m.sense
+  c.mode_change -> m.mode_change
+  m.sensor_reading -> c.sensor_reading
+  c.ctrl_cmd -> m.ctrl_cmd
+
+  reaction(startup) {=
+    lf_print("*** Auto mode ON.  Press M to toggle manual / auto.");
+    lf_print("*** Arrow keys: manual drive.  Backspace: reset.  Q: quit.\n");
+    lf_print("MuJoCo version number: %d\n", mj_version());
+  =}
+
+  reaction(m.key) -> m.restart, c.key_cmd {=
+    if (m.key->value.act != GLFW_PRESS) return;
+    int key = m.key->value.key;
+    int cmd = 0;
+
+    if (key == GLFW_KEY_BACKSPACE) {
+      lf_set(m.restart, true);
+      cmd = 'Z';
+    } else if (key == GLFW_KEY_Q) {
+      lf_request_stop();
+    } else if (key == GLFW_KEY_M) {
+      cmd = 'M';
+    } else if (key == GLFW_KEY_UP) {
+      cmd = 'U';
+    } else if (key == GLFW_KEY_DOWN) {
+      cmd = 'D';
+    } else if (key == GLFW_KEY_RIGHT) {
+      cmd = 'R';
+    } else if (key == GLFW_KEY_LEFT) {
+      cmd = 'L';
+    }
+
+    if (cmd != 0) {
+      lf_set(c.key_cmd, cmd);
+    }
+  =}
+
+  reaction(shutdown) {=
+    lf_print("\nExiting.");
+  =}
+}
