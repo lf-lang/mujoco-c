@@ -20,6 +20,7 @@
              rgb1=".65 .65 .65" rgb2=".80 .80 .80"/>
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".4"/>
 
+    <material name="car_body" rgba="0.7 0.7 0.7 1"/>
     <model name="car" file="car_sensor_rich.xml"/>
   </asset>
 

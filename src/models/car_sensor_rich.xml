@@ -38,7 +38,7 @@
     <body name="car" pos="0 0 0">
       <freejoint/>
       <light name="top light" pos="0 0 2" mode="trackcom" diffuse=".25 .25 .25"/>
-      <geom name="chasis" type="mesh" mesh="chasis"/>
+      <geom name="chasis" type="mesh" mesh="chasis" material="body"/>
       <!-- front wheel: raise radius to match rear -->
       <geom name="front wheel" pos=".08 0 -.005" type="sphere" size=".025" condim="1" priority="1"/>
       <light name="front light" pos=".1 0 .02" dir="2 0 -1" diffuse="1 1 1"/>
