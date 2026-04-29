@@ -1,0 +1,363 @@
+/**
+ * Line-following platoon of three cars on a figure-8 track in MuJoCo.
+ *
+ * Each car runs a PD line-following controller with platoon gap control.
+ * Five line rangefinders (ll, l, c, r, rr): ~0.025 m on track, ~0.030 m on floor.
+ * Lateral error: (-2·ll - l + r + 2·rr) / (sum + ε)
+ * Front/rear rangefinders (cutoff 1.0 m) maintain spacing and trigger emergency stops.
+ *
+ * Keys: M auto/manual  ↑↓←→ manual drive  Backspace reset  Q quit
+ *
+ * @author Chadlia Jerad
+ */
+target C {
+  keepalive: true,
+  files: ["models/car_platoon.xml", "models/track.xml", "models/car_sensor_rich.xml"]
+}
+
+import MuJoCoAuto from "lib/MuJoCoAuto.lf"
+
+preamble {=
+  typedef struct {
+    double line_ll, line_l, line_c, line_r, line_rr;
+    double dist_front, dist_rear;
+  } sensor_reading_t;
+
+  typedef struct {
+    double forward;   /* [0..1]  */
+    double turn;      /* [-1..1] */
+  } control_command_t;
+
+  typedef struct {
+    int forward_index;
+    int turn_index;
+    int line_ll_address;
+    int line_l_address;
+    int line_c_address;
+    int line_r_address;
+    int line_rr_address;
+    int dist_front_address;
+    int dist_rear_address;
+  } car_addresses_t;
+=}
+
+reactor MuJoCuEnvSim(
+    model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "car_platoon.xml" =}
+) extends MuJoCoAuto {
+
+  input[3]  sense: bool
+  input mode_change: bool
+  output[3] sensor_reading: sensor_reading_t
+  input[3]  ctrl_cmd: control_command_t
+
+  state addrs: car_addresses_t[3] = {0}
+  state auto_mode: bool = true
+  state step_count: int = 0
+
+  method read_sensors(i: int) : sensor_reading_t {=
+    sensor_reading_t rs = {
+      .line_ll    = self->context.d->sensordata[self->addrs[i].line_ll_address],
+      .line_l     = self->context.d->sensordata[self->addrs[i].line_l_address],
+      .line_c     = self->context.d->sensordata[self->addrs[i].line_c_address],
+      .line_r     = self->context.d->sensordata[self->addrs[i].line_r_address],
+      .line_rr    = self->context.d->sensordata[self->addrs[i].line_rr_address],
+      .dist_front = self->context.d->sensordata[self->addrs[i].dist_front_address],
+      .dist_rear  = self->context.d->sensordata[self->addrs[i].dist_rear_address],
+    };
+    return rs;
+  =}
+
+  reaction(startup) {=
+    static const char *prefixes[3]    = {"a_", "b_", "c_"};
+    static const char *line_names[5]  = {"line_ll", "line_l", "line_c", "line_r", "line_rr"};
+    char name[64];
+
+    for (int i = 0; i < 3; i++) {
+      snprintf(name, sizeof(name), "%sforward", prefixes[i]);
+      self->addrs[i].forward_index = mj_name2id(self->context.m, mjOBJ_ACTUATOR, name);
+      snprintf(name, sizeof(name), "%sturn", prefixes[i]);
+      self->addrs[i].turn_index = mj_name2id(self->context.m, mjOBJ_ACTUATOR, name);
+      if (self->addrs[i].forward_index < 0 || self->addrs[i].turn_index < 0) {
+        lf_print_error("Car %d: missing actuator (prefix '%s').", i, prefixes[i]);
+        lf_request_stop();
+        return;
+      }
+
+      int *adr[5] = {
+        &self->addrs[i].line_ll_address, &self->addrs[i].line_l_address,
+        &self->addrs[i].line_c_address,  &self->addrs[i].line_r_address,
+        &self->addrs[i].line_rr_address
+      };
+      for (int s = 0; s < 5; s++) {
+        snprintf(name, sizeof(name), "%s%s", prefixes[i], line_names[s]);
+        int idx = mj_name2id(self->context.m, mjOBJ_SENSOR, name);
+        if (idx < 0 || self->context.m->sensor_dim[idx] != 1) {
+          lf_print_error("Car %d: bad sensor '%s'.", i, name);
+          lf_request_stop();
+          return;
+        }
+        *adr[s] = self->context.m->sensor_adr[idx];
+      }
+
+      static const char *dist_names[2] = {"dist_front", "dist_rear"};
+      int *dist_adr[2] = {
+        &self->addrs[i].dist_front_address, &self->addrs[i].dist_rear_address
+      };
+      for (int s = 0; s < 2; s++) {
+        snprintf(name, sizeof(name), "%s%s", prefixes[i], dist_names[s]);
+        int idx = mj_name2id(self->context.m, mjOBJ_SENSOR, name);
+        if (idx < 0 || self->context.m->sensor_dim[idx] != 1) {
+          lf_print_error("Car %d: bad sensor '%s'.", i, name);
+          lf_request_stop();
+          return;
+        }
+        *dist_adr[s] = self->context.m->sensor_adr[idx];
+      }
+    }
+  =}
+
+  reaction(restart) {=
+    for (int i = 0; i < 3; i++) {
+      self->context.d->ctrl[self->addrs[i].forward_index] = 0.0;
+      self->context.d->ctrl[self->addrs[i].turn_index]    = 0.0;
+    }
+  =}
+
+  reaction(physics_timer) {=
+    self->step_count++;
+    if (self->step_count % 1000 == 0) {
+      sensor_reading_t rs = read_sensors(0);
+      snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE,
+               "Time=%6.1fs  a: LL:%.3f L:%.3f C:%.3f R:%.3f RR:%.3f [%s]",
+               lf_time_logical_elapsed() / 1e9,
+               rs.line_ll, rs.line_l, rs.line_c, rs.line_r, rs.line_rr,
+               self->auto_mode ? "AUTO" : "MANUAL");
+    }
+  =}
+
+  reaction(sense) -> sensor_reading {=
+    for (int i = 0; i < 3; i++) {
+      if (sense[i]->is_present) {
+        sensor_reading_t rs = read_sensors(i);
+        lf_set(sensor_reading[i], rs);
+      }
+    }
+  =}
+
+  reaction(ctrl_cmd) {=
+    for (int i = 0; i < 3; i++) {
+      if (ctrl_cmd[i]->is_present) {
+        self->context.d->ctrl[self->addrs[i].forward_index] = ctrl_cmd[i]->value.forward;
+        self->context.d->ctrl[self->addrs[i].turn_index]    = ctrl_cmd[i]->value.turn;
+      }
+    }
+  =}
+
+  reaction(mode_change) {=
+    self->auto_mode = mode_change->value;
+    lf_print("Mode: %s", self->auto_mode ? "AUTO" : "MANUAL");
+  =}
+}
+
+
+reactor Car(
+    auto_speed: double = 0.30,
+    kp: double = 2.0,
+    kd: double = 1.0,
+    dt: time = 50 ms,
+    speed_kp: double = 0.8,
+    min_speed: double = 0.15,
+    lost_threshold: double = 0.0295,  // min sensor reading above this → line lost
+    speed_sensitivity: double = 0.05,
+    turn_sensitivity: double = 0.01,
+    desired_gap: double = 0.30,       // target gap to front car (m)
+    gap_kp: double = 0.5,             // proportional gain for gap control
+    stop_distance: double = 0.15,     // emergency stop when front car closer than this (m)
+    safe_distance: double = 0.22      // resume only when front car farther than this (m)
+) {
+
+  timer sense_timer(0, dt)
+  input sensor_reading: sensor_reading_t
+  input key_cmd: int
+
+  output sense: bool
+  output mode_change: bool
+  output ctrl_cmd: control_command_t
+
+  state speed: double = 0.0
+  state turn: double = 0.0
+  state auto_mode: bool = true
+  state prev_error: double = 0.0
+  state filtered_deriv: double = 0.0  // EMA-filtered derivative
+  state search_dir: double = 1.0      // rotation direction when line is lost
+  state emergency_stop: bool = false  // latched when front gap < stop_distance
+
+  initial mode Auto {
+    reaction(sense_timer) -> sense {=
+      lf_set(sense, true);
+    =}
+
+    reaction(key_cmd) -> Manual, mode_change, ctrl_cmd {=
+      int key = key_cmd->value;
+      if (key == 'Z') {
+        self->speed = 0.0;
+        self->turn  = 0.0;
+      } else if (key == 'M') {
+        self->auto_mode = !self->auto_mode;
+        lf_set(mode_change, self->auto_mode);
+        self->speed = 0.0;
+        self->turn  = 0.0;
+        self->filtered_deriv = 0.0;
+        control_command_t stop = {.forward = 0.0, .turn = 0.0};
+        lf_set(ctrl_cmd, stop);
+        lf_set_mode(Manual);
+      }
+    =}
+
+    reaction(sensor_reading) -> ctrl_cmd {=
+      if (!self->auto_mode) return;
+
+      // Emergency stop: latch when front car too close; release with hysteresis.
+      double dist_f = sensor_reading->value.dist_front;
+      if (dist_f >= 0.0 && dist_f < self->stop_distance) {
+        self->emergency_stop = true;
+      } else if (self->emergency_stop && (dist_f < 0.0 || dist_f >= self->safe_distance)) {
+        self->emergency_stop = false;
+        self->filtered_deriv = 0.0;  // avoid derivative spike on resume
+      }
+      if (self->emergency_stop) {
+        control_command_t cmd = {.forward = 0.0, .turn = 0.0};
+        lf_set(ctrl_cmd, cmd);
+        return;
+      }
+
+      double rr = sensor_reading->value.line_rr;
+      double r  = sensor_reading->value.line_r;
+      double c  = sensor_reading->value.line_c;
+      double l  = sensor_reading->value.line_l;
+      double ll = sensor_reading->value.line_ll;
+
+      // Line lost when every sensor reads floor level (> lost_threshold).
+      double min_s = ll < l ? ll : l;
+      if (c  < min_s) min_s = c;
+      if (r  < min_s) min_s = r;
+      if (rr < min_s) min_s = rr;
+      if (min_s > self->lost_threshold) {
+        control_command_t cmd = {.forward = 0.0, .turn = self->search_dir * 0.2};
+        lf_set(ctrl_cmd, cmd);
+        return;
+      }
+
+      double total = ll + l + c + r + rr;
+      double error = (-2*ll - l + r + 2*rr) / (total + 1e-6);
+
+      if      (error >  0.1) self->search_dir =  1.0;
+      else if (error < -0.1) self->search_dir = -1.0;
+
+      // PD with EMA-filtered derivative (α=0.25).
+      double dt_s = (double)self->dt * 1e-9;
+      double raw_deriv = (error - self->prev_error) / dt_s;
+      self->filtered_deriv = 0.25 * raw_deriv + 0.75 * self->filtered_deriv;
+      self->prev_error = error;
+
+      double ctrl_turn = self->kp * error + self->kd * self->filtered_deriv;
+      if (ctrl_turn >  1.0) ctrl_turn =  1.0;
+      if (ctrl_turn < -1.0) ctrl_turn = -1.0;
+
+      // Gap-keeping: rangefinder returns -1 when no car in range → skip.
+      double target_speed = self->auto_speed;
+      double dist_r = sensor_reading->value.dist_rear;
+
+      if (dist_f >= 0.0) {
+        double gap_error = dist_f - self->desired_gap;
+        target_speed += self->gap_kp * gap_error;
+        if (target_speed < 0.0)               target_speed = 0.0;
+        if (target_speed > self->auto_speed)  target_speed = self->auto_speed;
+      }
+      // Rear car too close: small defensive speed boost.
+      if (dist_r >= 0.0 && dist_r < self->desired_gap * 0.5) {
+        double boost = self->gap_kp * (self->desired_gap * 0.5 - dist_r);
+        target_speed += boost;
+        if (target_speed > self->auto_speed * 1.2) target_speed = self->auto_speed * 1.2;
+      }
+
+      // Smooth speed reduction on curves; floor at min_speed.
+      double abs_error   = error < 0 ? -error : error;
+      double speed_scale = 1.0 / (1.0 + self->speed_kp * abs_error);
+      if (speed_scale < self->min_speed / target_speed)
+          speed_scale = self->min_speed / target_speed;
+
+      control_command_t cmd = {
+          .forward = target_speed * speed_scale,
+          .turn    = ctrl_turn
+      };
+      lf_set(ctrl_cmd, cmd);
+    =}
+  }
+
+  mode Manual {
+    reaction(key_cmd) -> ctrl_cmd, Auto, mode_change {=
+      int key = key_cmd->value;
+      if (key == 'Z') {
+        self->speed = 0.0;
+        self->turn  = 0.0;
+      } else if (key == 'M') {
+        self->auto_mode = !self->auto_mode;
+        self->speed = 0.0;
+        self->turn  = 0.0;
+        lf_set(mode_change, self->auto_mode);
+        lf_set_mode(Auto);
+      } else if (!self->auto_mode) {
+        if      (key == 'U') self->speed += self->speed_sensitivity;
+        else if (key == 'D') self->speed -= self->speed_sensitivity;
+        else if (key == 'R') self->turn  -= self->turn_sensitivity;
+        else if (key == 'L') self->turn  += self->turn_sensitivity;
+      }
+      control_command_t cmd = {.forward = self->speed, .turn = self->turn};
+      lf_set(ctrl_cmd, cmd);
+    =}
+  }
+}
+
+main reactor {
+  m  = new MuJoCuEnvSim()
+  c = new [3] Car()   // a_=lead, b_=middle, c_=rear
+
+  c.sense -> m.sense
+  m.sensor_reading -> c.sensor_reading
+  c.ctrl_cmd -> m.ctrl_cmd
+
+  // c.mode_change -> m.mode_change   // lead car drives the mode overlay
+
+  reaction(startup) {=
+    lf_print("*** Auto mode ON.  Press M to toggle manual / auto.");
+    lf_print("*** Arrow keys: manual drive.  Backspace: reset.  Q: quit.\n");
+    lf_print("MuJoCo version number: %d\n", mj_version());
+  =}
+
+  reaction(m.key) -> m.restart, c.key_cmd {=
+    if (m.key->value.act != GLFW_PRESS) return;
+    int key = m.key->value.key;
+    int cmd = 0;
+
+    if      (key == GLFW_KEY_BACKSPACE) { lf_set(m.restart, true); cmd = 'Z'; }
+    else if (key == GLFW_KEY_Q)         { lf_request_stop(); }
+    else if (key == GLFW_KEY_M)         { cmd = 'M'; }
+    else if (key == GLFW_KEY_UP)        { cmd = 'U'; }
+    else if (key == GLFW_KEY_DOWN)      { cmd = 'D'; }
+    else if (key == GLFW_KEY_RIGHT)     { cmd = 'R'; }
+    else if (key == GLFW_KEY_LEFT)      { cmd = 'L'; }
+
+    if (cmd != 0) {
+      lf_set(c[0].key_cmd, cmd);
+      if (cmd != 'M') {  // mode toggle only from lead car
+        lf_set(c[1].key_cmd, cmd);
+        lf_set(c[2].key_cmd, cmd);
+      }
+    }
+  =}
+
+  reaction(shutdown) {=
+    lf_print("\nExiting.");
+  =}
+}
