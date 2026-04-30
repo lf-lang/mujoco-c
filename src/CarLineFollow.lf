@@ -10,8 +10,10 @@
  * Keys: M toggle auto/manual  ↑↓←→ manual drive  Backspace reset  Q quit
  *
  * @author Chadlia Jerad
+ * @author Edward A. Lee
  */
 target C {
+  workers: 1, // For macOS, all GLFW operations must be done on the main thread.
   keepalive: true,
   files: ["models/car_line_follow.xml", "models/track.xml", "models/car_sensor_rich.xml"]
 }
@@ -29,12 +31,11 @@ preamble {=
   } control_command_t;
 =}
 
-reactor MuJoCuEnvSim(
+reactor MuJoCuCarWithTrack(
     model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "car_line_follow.xml" =}
 ) extends MuJoCoAuto {
 
   input sense: bool
-  input mode_change: bool
 
   output sensor_reading: sensor_reading_t
   input ctrl_cmd: control_command_t
@@ -47,7 +48,6 @@ reactor MuJoCuEnvSim(
   state line_r_address: int = 0
   state line_rr_address: int = 0
   state sensor_values: sensor_reading_t = {0};
-  state auto_mode: bool = true
   state step_count: int = 0
 
   method read_sensors() : sensor_reading_t {=
@@ -104,12 +104,11 @@ reactor MuJoCuEnvSim(
 
     if (self->step_count % 1000 == 0) {
       snprintf(self->text_to_overlay, OVERLAY_BUF_SIZE,
-              "Time=%6.1fs: LL:%.4f L:%.4f C:%.4f R:%.4f RR:%.4f [%s]",
+              "Time=%6.1fs: LL:%.4f L:%.4f C:%.4f R:%.4f RR:%.4f",
               lf_time_logical_elapsed() / 1e9,
               self->sensor_values.line_ll,self->sensor_values.line_l, 
               self->sensor_values.line_c, 
-              self->sensor_values.line_r, self->sensor_values.line_rr,
-              self->auto_mode ? "AUTO" : "MANUAL");
+              self->sensor_values.line_r, self->sensor_values.line_rr);
     }
 
   =}
@@ -123,56 +122,53 @@ reactor MuJoCuEnvSim(
     self->context.d->ctrl[self->forward_index] = ctrl_cmd->value.forward;
     self->context.d->ctrl[self->turn_index] = ctrl_cmd->value.turn;
   =}
-
-  reaction(mode_change) {=
-    self->auto_mode = mode_change->value;
-    lf_print("====mode changed to %d", self->auto_mode);
-  =}
-
 }
 
 
-reactor Car(
-    auto_speed: double = 0.30,      // forward control in auto mode  [0..1]
-    kp: double = 2.0,
-    kd: double = 1.0,
+reactor Controller(
+    kp: double = 1.0,
+    kd: double = 0.1,
     dt: time = 50 ms,
-    speed_kp: double = 0.8,
+    speed_kp: double = 2.0,
     min_speed: double = 0.15,
     lost_threshold: double = 0.0295,  // min sensor reading above this → line lost (~0.025 on strip, ~0.030 on floor)
-    speed_sensitivity: double = 0.05,
+    speed_sensitivity: double = 0.1,
     turn_sensitivity: double = 0.01
 ) {
-
   timer sense_timer(0, dt)
   input sensor_reading: sensor_reading_t
   input key_cmd: int
 
   output sense: bool
-  output mode_change: bool
   output ctrl_cmd: control_command_t
 
-  state speed: double = 0.0
+  state speed: double = 0.30     // forward speed [0..1]
   state turn: double = 0.0
-  state auto_mode: bool = true
   state prev_error: double = 0.0
   state filtered_deriv: double = 0.0  // EMA-filtered derivative
   state search_dir: double = 1.0      // rotation direction when line is lost
 
-  initial mode Auto {
-    reaction(sense_timer) -> sense {=
-      lf_set(sense, true);
-    =}
+  reaction(sense_timer) -> sense {=
+    lf_set(sense, true);
+  =}
 
-    reaction(key_cmd) -> Manual, mode_change, ctrl_cmd {=
+  reaction(sensor_reading){=
+    printf("\rLag: " PRINTF_TIME " ms", (lf_time_physical() - lf_time_logical()) / MSEC(1));
+    printf("  LL:%.4f  L:%.4f  C:%.4f  R:%.4f  RR:%.4f",
+        sensor_reading->value.line_ll,sensor_reading->value.line_l, 
+        sensor_reading->value.line_c, 
+        sensor_reading->value.line_r, sensor_reading->value.line_rr);
+    fflush(stdout);
+  =}
+
+  initial mode Auto {
+    reaction(key_cmd) -> Manual, ctrl_cmd {=
       int key = key_cmd->value;
       if (key == 'Z') {
         self->speed = 0.0;
         self->turn  = 0.0;
       } else if (key == 'M') {
-        self->auto_mode = !self->auto_mode;
         lf_print("*** Manual mode ON");
-        lf_set(mode_change, self->auto_mode);
         // MuJoCo retains the last ctrl[] value — zero explicitly on mode switch.
         self->speed = 0.0;
         self->turn  = 0.0;
@@ -180,20 +176,14 @@ reactor Car(
         control_command_t stop = {.forward = 0.0, .turn = 0.0};
         lf_set(ctrl_cmd, stop);
         lf_set_mode(Manual);
+      } else if (key == 'U') {
+        self->speed += self->speed_sensitivity;
+      } else if (key == 'D') {
+        self->speed -= self->speed_sensitivity;
       }
     =}
 
     reaction(sensor_reading) -> ctrl_cmd {=
-      printf("\r" PRINTF_TIME, lf_time_logical_elapsed());
-      printf("  LL:%.4f  L:%.4f  C:%.4f  R:%.4f  RR:%.4f [%s]",
-          sensor_reading->value.line_ll,sensor_reading->value.line_l, 
-          sensor_reading->value.line_c, 
-          sensor_reading->value.line_r, sensor_reading->value.line_rr,
-          self->auto_mode ? "AUTO" : "MANUAL");
-      fflush(stdout);
-
-      if (!self->auto_mode) return;
-
       double rr = sensor_reading->value.line_rr;
       double r  = sensor_reading->value.line_r;
       double c  = sensor_reading->value.line_c;
@@ -206,13 +196,15 @@ reactor Car(
       if (r   < min_s) min_s = r;
       if (rr  < min_s) min_s = rr;
       if (min_s > self->lost_threshold) {
-        control_command_t cmd = {.forward = 0.0, .turn = self->search_dir * 0.2};
+        control_command_t cmd = {.forward = 0.3, .turn = self->search_dir * 0.2};
         lf_set(ctrl_cmd, cmd);
         return;
       }
 
       double total = ll + l + c + r + rr;
       double error = (-2*ll - l + r + 2*rr) / (total + 1e-6);
+
+      printf("  error:%.4f", error);
 
       // Keep search direction current while tracking.
       if      (error >  0.1) self->search_dir =  1.0;
@@ -221,7 +213,7 @@ reactor Car(
       // PD with EMA derivative (α=0.25 suppresses sensor noise amplified by 1/dt).
       double dt_s = (double)self->dt * 1e-9;
       double raw_deriv = (error - self->prev_error) / dt_s;
-      self->filtered_deriv = 0.25 * raw_deriv + 0.75 * self->filtered_deriv;
+      self->filtered_deriv = 0.1 * raw_deriv + 0.9 * self->filtered_deriv;
       self->prev_error = error;
 
       double ctrl_turn = self->kp * error + self->kd * self->filtered_deriv;
@@ -229,13 +221,15 @@ reactor Car(
       if (ctrl_turn < -1.0) ctrl_turn = -1.0;
 
       // Smooth speed reduction on curves; floor at min_speed.
-      double abs_error   = error < 0 ? -error : error;
-      double speed_scale = 1.0 / (1.0 + self->speed_kp * abs_error);
-      if (speed_scale < self->min_speed / self->auto_speed)
-          speed_scale = self->min_speed / self->auto_speed;
+      double sq_error   = error * error;
+      double speed_scale = 1.0 / (1.0 + self->speed_kp * sq_error);
+      if (speed_scale < self->min_speed / self->speed)
+          speed_scale = self->min_speed / self->speed;
+
+      printf("  speed_scale:%.4f", speed_scale);
 
       control_command_t cmd = {
-          .forward = self->auto_speed * speed_scale,
+          .forward = self->speed * speed_scale,
           .turn    = ctrl_turn
       };
       lf_set(ctrl_cmd, cmd);
@@ -243,19 +237,17 @@ reactor Car(
   }
 
   mode Manual {
-    reaction(key_cmd) -> ctrl_cmd, Auto, mode_change {=
+    reaction(key_cmd) -> ctrl_cmd, Auto {=
       int key = key_cmd->value;
       if (key == 'Z') {
         self->speed = 0.0;
         self->turn  = 0.0;
       } else if (key == 'M') {
-        self->auto_mode = !self->auto_mode;
         lf_print("*** Auto mode ON");
         self->speed = 0.0;
         self->turn  = 0.0;
-        lf_set(mode_change, self->auto_mode);
         lf_set_mode(Auto);
-      } else if (!self->auto_mode) {
+      } else {
         if      (key == 'U') self->speed += self->speed_sensitivity;
         else if (key == 'D') self->speed -= self->speed_sensitivity;
         else if (key == 'R') self->turn  -= self->turn_sensitivity;
@@ -264,17 +256,14 @@ reactor Car(
       control_command_t cmd = {.forward = self->speed, .turn = self->turn};
       lf_set(ctrl_cmd, cmd);
     =}
-
   }
-
 }
 
 main reactor {
-  m = new MuJoCuEnvSim()
-  c = new Car()
+  m = new MuJoCuCarWithTrack()
+  c = new Controller()
 
   c.sense -> m.sense
-  c.mode_change -> m.mode_change
   m.sensor_reading -> c.sensor_reading
   c.ctrl_cmd -> m.ctrl_cmd
 
