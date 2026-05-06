@@ -25,7 +25,7 @@ import MuJoCoAuto from "lib/MuJoCoAuto.lf"
 preamble {=
   typedef struct {
     double line_ll, line_l, line_c, line_r, line_rr;
-    double dist_front, dist_rear;
+    double dist_front;
   } sensor_reading_t;
 
   typedef struct {
@@ -42,7 +42,6 @@ preamble {=
     int line_r_address;
     int line_rr_address;
     int dist_front_address;
-    int dist_rear_address;
   } car_addresses_t;
 =}
 
@@ -69,7 +68,6 @@ reactor MuJoCoPlatoonWithTrack(
       .line_r     = self->context.d->sensordata[self->addrs[i].line_r_address],
       .line_rr    = self->context.d->sensordata[self->addrs[i].line_rr_address],
       .dist_front = self->context.d->sensordata[self->addrs[i].dist_front_address],
-      .dist_rear  = self->context.d->sensordata[self->addrs[i].dist_rear_address],
     };
     return rs;
   =}
@@ -106,11 +104,11 @@ reactor MuJoCoPlatoonWithTrack(
         *adr[s] = self->context.m->sensor_adr[idx];
       }
 
-      static const char *dist_names[2] = {"dist_front", "dist_rear"};
-      int *dist_adr[2] = {
-        &self->addrs[i].dist_front_address, &self->addrs[i].dist_rear_address
+      static const char *dist_names[1] = {"dist_front"};
+      int *dist_adr[1] = {
+        &self->addrs[i].dist_front_address
       };
-      for (int s = 0; s < 2; s++) {
+      for (int s = 0; s < 1; s++) {
         snprintf(name, sizeof(name), "%s%s", prefixes[i], dist_names[s]);
         int idx = mj_name2id(self->context.m, mjOBJ_SENSOR, name);
         if (idx < 0 || self->context.m->sensor_dim[idx] != 1) {
@@ -266,19 +264,12 @@ reactor Controller(
 
       // Gap-keeping: rangefinder returns -1 when no car in range → skip.
       double target_speed = self->auto_speed;
-      double dist_r = sensor_reading->value.dist_rear;
 
       if (dist_f >= 0.0) {
         double gap_error = dist_f - self->desired_gap;
         target_speed += self->gap_kp * gap_error;
         if (target_speed < 0.0)               target_speed = 0.0;
         if (target_speed > self->auto_speed)  target_speed = self->auto_speed;
-      }
-      // Rear car too close: small defensive speed boost.
-      if (dist_r >= 0.0 && dist_r < self->desired_gap * 0.5) {
-        double boost = self->gap_kp * (self->desired_gap * 0.5 - dist_r);
-        target_speed += boost;
-        if (target_speed > self->auto_speed * 1.2) target_speed = self->auto_speed * 1.2;
       }
 
       // Smooth speed reduction on curves; floor at min_speed.

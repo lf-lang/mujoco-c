@@ -1,8 +1,8 @@
 <!--
-  car_sensor_rich.xml — car body with 5 line sensors and 2 distance sensors.
-  Used via <attach> in a parent model (e.g. car_line_follow.xml, carPlatoon.xml).
+  car_sensor_rich.xml — car body with 5 line sensors and 1 front distance sensor.
+  Used via <attach> in a parent model (e.g. car_line_follow.xml, car_platoon.xml).
   Provides: chasis mesh, freejoint body, tendon/actuator (forward/turn),
-    rangefinders line_ll/l/c/r/rr (cutoff 0.05 m) and dist_front/rear (cutoff 1.0 m).
+    rangefinders line_ll/l/c/r/rr (cutoff 0.05 m) and dist_front (cutoff 1.0 m).
   The parent must declare the track default class and ground plane.
 -->
 <mujoco model="carSensorRich">
@@ -63,11 +63,9 @@
       <site name="line_r_site"  pos=".08 -.010 0" euler="180 0 0"/>
       <site name="line_rr_site" pos=".08 -.025 0" euler="180 0 0"/>
 
-      <!-- Distance sensors: euler "0 ±90 0" aligns site z with car ±x -->
+      <!-- Front distance sensor: euler "0 -90 0" aligns site z with car +x -->
       <site name="dist_front_site" class="dist_sensor"
             pos=".11  0  .01" euler="0 -90 0"/>
-      <site name="dist_rear_site"  class="dist_sensor"
-            pos="-.11 0  .01" euler="0  90 0"/>
     </body>
   </worldbody>
 
@@ -96,7 +94,6 @@
     <rangefinder name="line_rr" site="line_rr_site" cutoff="0.05"/>
     <!-- cutoff 1.0 m: suitable for platoon spacing (~0.3 m gaps) -->
     <rangefinder name="dist_front" site="dist_front_site" cutoff="1.0"/>
-    <rangefinder name="dist_rear"  site="dist_rear_site"  cutoff="1.0"/>
   </sensor>
 
 </mujoco>
