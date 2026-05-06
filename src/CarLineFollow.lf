@@ -1,13 +1,16 @@
 /**
+ * @file CarLineFollow.lf
  * Line-following car on a figure-8 track in MuJoCo.
  *
- * Five downward rangefinders (ll, l, c, r, rr) feed a PID controller.
+ * Five downward rangefinders (ll, l, c, r, rr) feed a PD controller.
  * Sensor readings: ~0.025 m over track strip, ~0.030 m over bare floor.
  * Error = weighted lateral offset: (-2·ll - l + r + 2·rr) / (sum + ε)
  *   > 0 → drifted left  → turn right
  *   < 0 → drifted right → turn left
  *
  * Keys: M toggle auto/manual  ↑↓←→ manual drive  Backspace reset  Q quit
+ *
+ * See [README.md](../README.md) for prerequisites and installation instructions.
  *
  * @author Chadlia Jerad
  * @author Edward A. Lee
@@ -31,7 +34,11 @@ preamble {=
   } control_command_t;
 =}
 
-reactor MuJoCuCarWithTrack(
+/**
+ * MuJoCo simulator for the line-following car. Extends MuJoCoAuto with five line-sensor outputs
+ * and a control-command input so the Controller reactor can drive the car.
+ */
+reactor MuJoCoCarWithTrack(
     model_file: string = {= LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "car_line_follow.xml" =}
 ) extends MuJoCoAuto {
 
@@ -125,6 +132,10 @@ reactor MuJoCuCarWithTrack(
 }
 
 
+/**
+ * PD line-following controller with auto/manual modes. Reads five line sensors, computes
+ * a weighted lateral error, and outputs forward/turn commands. Press M to toggle modes.
+ */
 reactor Controller(
     kp: double = 1.0,
     kd: double = 0.1,
@@ -260,7 +271,7 @@ reactor Controller(
 }
 
 main reactor {
-  m = new MuJoCuCarWithTrack()
+  m = new MuJoCoCarWithTrack()
   c = new Controller()
 
   c.sense -> m.sense
