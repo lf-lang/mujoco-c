@@ -160,7 +160,7 @@ reactor MuJoCoPlatoonWithTrack(
  */
 reactor Controller(
     bank_index:int = 0, 
-    name: char[] = 'a', 
+    name: char = 'a', 
     auto_speed: double = 0.35,
     kp: double = 1.0,
     kd: double = 0.1,
