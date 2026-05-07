@@ -1,0 +1,83 @@
+<mujoco>
+  <!--
+    car_platoon.xml — three-car platoon on the figure-8 track.
+    Composes track.xml with three instances of car_sensor_rich.xml via <attach>.
+
+    Prefixed names per car (prefix a_, b_, c_):
+      Actuators : a_forward  a_turn   b_forward  b_turn   c_forward  c_turn
+      Sensors   : a_line_ll … a_line_rr  a_dist_front  a_dist_rear  (same for b_, c_)
+      Body color: a_body (red)  b_body (green)  c_body (blue)
+
+    Note: <attach> does not copy <default> classes; wheel/decor/dist_sensor are
+    redeclared here. The "body" material must be provided by the parent (this file)
+    with the per-car prefix because car_sensor_rich.xml references it externally.
+
+    Platoon order on the top-right straight (y=0.6, z=0.03), facing +x:
+      car_a (lead)   x = 0.9
+      car_b (middle) x = 0.6
+      car_c (rear)   x = 0.3
+  -->
+
+  <compiler autolimits="true"/>
+  <option timestep="0.001"/>
+  <option integrator="implicitfast"/>
+
+  <visual>
+    <headlight ambient=".6 .6 .6" diffuse=".8 .8 .8" specular="0 0 0"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512"
+             rgb1=".65 .65 .65" rgb2=".80 .80 .80"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".4"/>
+
+    <!-- Per-car chassis colors; each becomes <prefix>body after <attach>. -->
+    <material name="a_body" rgba="0.85 0.25 0.20 1"/>  <!-- red   — lead   -->
+    <material name="b_body" rgba="0.20 0.70 0.25 1"/>  <!-- green — middle -->
+    <material name="c_body" rgba="0.20 0.45 0.90 1"/>  <!-- blue  — rear   -->
+
+    <model name="car" file="car_sensor_rich.xml"/>
+  </asset>
+
+  <default>
+    <joint damping=".03" actuatorfrcrange="-0.5 0.5"/>
+    <default class="wheel">
+      <geom type="cylinder" size=".03 .01" rgba=".5 .5 1 1"/>
+    </default>
+    <default class="decor">
+      <site type="box" rgba=".5 1 .5 1"/>
+    </default>
+    <default class="dist_sensor">
+      <site type="sphere" size=".004" rgba="1 .3 .3 1"/>
+    </default>
+    <!-- Non-collidable track geoms; mj_ray still detects them for rangefinders. -->
+    <default class="track">
+      <geom type="box" rgba="0.05 0.05 0.05 1" contype="0" conaffinity="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <include file="track.xml"/>
+
+    <light name="overhead center" pos=" 0    0   2.0" dir="0 0 -1" diffuse=".1 .1 .1" specular="0 0 0"/>
+    <light name="overhead right"  pos=" 0.6  0   1.5" dir="0 0 -1" diffuse=".1 .1 .1" specular="0 0 0"/>
+    <light name="overhead left"   pos="-0.6  0   1.5" dir="0 0 -1" diffuse=".1 .1 .1" specular="0 0 0"/>
+
+    <!-- Lead car (red) -->
+    <frame name="car_a_frame" pos="0.9 0.6 0.03">
+      <attach model="car" body="car" prefix="a_"/>
+    </frame>
+
+    <!-- Middle car (green) -->
+    <frame name="car_b_frame" pos="0.6 0.6 0.03">
+      <attach model="car" body="car" prefix="b_"/>
+    </frame>
+
+    <!-- Rear car (blue) -->
+    <frame name="car_c_frame" pos="0.3 0.6 0.03">
+      <attach model="car" body="car" prefix="c_"/>
+    </frame>
+
+  </worldbody>
+
+</mujoco>
