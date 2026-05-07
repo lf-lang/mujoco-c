@@ -255,7 +255,7 @@ reactor Controller(
         self->turn  = 0.0;
       } else if (key == 'M') {
         lf_print("*** Auto mode ON");
-        self->speed = 0.0;
+        self->speed = 0.30;
         self->turn  = 0.0;
         lf_set_mode(Auto);
       } else {
