@@ -281,8 +281,7 @@ main reactor {
   reaction(startup) {=
     lf_print("*** Auto mode ON.  Press M to toggle manual / auto.");
     lf_print("*** Arrow keys: manual drive.  Backspace: reset.  Q: quit.\n");
-    lf_print("MuJoCo version number: %d\n", mj_version());
-  =}
+ =}
 
   reaction(m.key) -> m.restart, c.key_cmd {=
     if (m.key->value.act != GLFW_PRESS) return;
