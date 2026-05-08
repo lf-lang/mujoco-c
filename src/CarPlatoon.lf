@@ -165,15 +165,15 @@ reactor Controller(
     kp: double = 1.0,
     kd: double = 0.1,
     dt: time = 50 ms,
-    speed_kp: double = 2.0,
+    speed_kp: double = 1.5,
     min_speed: double = 0.15,
     lost_threshold: double = 0.0295,  // min sensor reading above this → line lost
     speed_sensitivity: double = 0.08,
     turn_sensitivity: double = 0.01,
-    desired_gap: double = 0.25,       // target gap to front car (m)
+    desired_gap: double = 0.15,       // target gap to front car (m)
     gap_kp: double = 0.6,             // proportional gain for gap control
-    stop_distance: double = 0.15,     // emergency stop when front car closer than this (m)
-    safe_distance: double = 0.22      // resume only when front car farther than this (m)
+    stop_distance: double = 0.07,     // emergency stop when front car closer than this (m)
+    safe_distance: double = 0.2      // resume only when front car farther than this (m)
 ) {
 
   timer sense_timer(0, dt)
@@ -189,6 +189,7 @@ reactor Controller(
   state filtered_deriv: double = 0.0  // EMA-filtered derivative
   state search_dir: double = 1.0      // rotation direction when line is lost
   state emergency_stop: bool = false  // latched when front gap < stop_distance
+  state counter: int = 0
 
   reaction(startup) {=
     self->speed = self->auto_speed;
@@ -289,6 +290,9 @@ reactor Controller(
           .forward = target_speed * speed_scale,
           .turn    = ctrl_turn
       };
+      self->counter++;
+      if (self->counter % 80)
+        lf_print("*** Car %c: error=%.3f, dist_f=%.3f, speed=%.3f, turn=%.3f", self->name, error, dist_f, cmd.forward, cmd.turn);
       lf_set(ctrl_cmd, cmd);
     =}
   }
@@ -320,7 +324,7 @@ main reactor (
   names: char[] = {'a', 'b', 'c'}
 ){
   m  = new MuJoCoPlatoonWithTrack()
-  c = new [3] Controller(name = {= self->names[bank_index] =})   // a_=lead, b_=middle, c_=rear
+  c = new [3] Controller(name = {= self->names[bank_index] =})   // a_=lead, b_=middle, c_=lead
 
   c.sense -> m.sense
   m.sensor_reading -> c.sensor_reading
