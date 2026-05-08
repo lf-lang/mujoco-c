@@ -63,9 +63,9 @@
       <site name="line_r_site"  pos=".08 -.010 0" euler="180 0 0"/>
       <site name="line_rr_site" pos=".08 -.025 0" euler="180 0 0"/>
 
-      <!-- Front distance sensor: euler "0 -90 0" aligns site z with car +x -->
+      <!-- Front distance sensor: euler "0 90 0" aligns site z with car +x -->
       <site name="dist_front_site" class="dist_sensor"
-            pos=".11  0  .01" euler="0 -90 0"/>
+            pos=".11  0  .01" euler="0 90 0"/>
     </body>
   </worldbody>
 
