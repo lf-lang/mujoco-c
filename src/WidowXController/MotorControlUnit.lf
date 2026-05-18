@@ -19,32 +19,23 @@
 */
 target C
 
-import PID from "pid.lf"
-//import Sum from "Sum.lf"
 import SetMotor from "SetMotor.lf"
 
-reactor MotorControlUnit {
+reactor MotorControlUnit(period: time = 100 ms) {
 
     // Inputs
     input desired: double; 
-    //input ff: double; 
-    input qpos: double; 
-    input qvel: double; 
+    input last_qpos: double; 
+    input last_qvel: double; 
     output motor: double;
 
     // Subreactors
-    pid_pos = new PID(KP = 4.0, KI = 0.0, TD = 0.005, Cycle = 0.02); 
-/*
-    adder0 = new Sum();
 
-    pid_vel0 = new PID(KP = 2.0, KI = 0.0, TD = 0.005, Cycle = 0.02);
-*/
-    set_motor = new SetMotor();
 
-   // desired -> pid_pos.SP;
-   // qpos    -> pid_pos.PV;
-   // pid_pos.XOut -> set_motor.motor;
+    set_motor = new SetMotor(period = period);
+
     desired -> set_motor.motor;
+    //desired -> set_motor.motor;
     set_motor.command -> motor;
    /* pid_pos0.XOut -> adder0.in1;
     ff0     -> adder0.in2;

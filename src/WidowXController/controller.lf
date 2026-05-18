@@ -24,8 +24,11 @@ target C {
       "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
-import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
+import TwoRobots from "../lib/TwoRobots.lf"
+//import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
+//import MuJoCoVX300S from "../lib/MuJoCoVX300S.lf"
 import PathplanningUnit from "PathplanningUnit.lf"
+import ReadSensorDataUnit from "ReadSensorDataUnit.lf"
 import MotorControlUnit from "MotorControlUnit.lf"
 
 preamble {=
@@ -36,18 +39,18 @@ reactor RobotControl(
     period: time = 100 ms,
     dataset: int = 0,
     step: double = 0.05,
-    factor: double = 0.1,
-    sin: bool = true,
     high_limit: double = 1.0,
     low_limit: double = -1.0,
     bank_index: int = 0,
-    parameter_file: string = "") {
+    parameter_file: string = "",
+    waypoint_file: string = "") {
   input restart: bool
   input qpos: double
   input qvel: double
   output command: double
   timer t(0, period)
   state motor: double = 0.0
+
 
   reaction(startup) {=
     if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
@@ -68,17 +71,17 @@ reactor RobotControl(
 
   planner = new PathplanningUnit(
     period = period,
-    factor = factor,
-    sin = sin,
     high_limit = high_limit,
     low_limit = low_limit,
-    step = step);
+    step = step, 
+    bank_index = bank_index,        
+    waypoint_file = waypoint_file);
   motor_ctrl = new MotorControlUnit();
+  ReadData = new ReadSensorDataUnit(period = period);
 
   // State feedback  → control
-  qpos -> motor_ctrl.qpos;
-  qvel -> motor_ctrl.qvel;
-
+  qpos -> ReadData.qpos;
+  qvel -> ReadData.qvel;
   // Path planner → control
   planner.desired -> motor_ctrl.desired;
  // planner.feedforward -> motor_ctrl.ff;
@@ -97,30 +100,39 @@ reactor RobotControl(
 
 main reactor controller(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
-  m = new MuJoCoWidowX(frame_period = 33 ms)
-  c = new[8] RobotControl(
+  m = new TwoRobots(frame_period = 33 ms)
+  cL = new[8] RobotControl(
       dataset=dataset,
       period = 100 ms,
-      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParameters.csv" =})
+      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =},
+      waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersvx300s.csv" =})
+  cR = new[8] RobotControl(
+      dataset=dataset,
+      period = 100 ms,
+      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =},
+      waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersWidowX.csv" =})
 
-  c.command -> m.motor;
-  m.joint_pos -> c.qpos;
-  m.joint_vel -> c.qvel;
-  
+  cL.command -> m.Lmotor;
+  cR.command -> m.Rmotor;
+  m.Ljoint_pos -> cL.qpos;
+  m.Ljoint_vel -> cL.qvel;
+  m.Rjoint_pos -> cR.qpos;
+  m.Rjoint_vel -> cR.qvel;
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
     lf_print("*** Type q to quit.\n");
   =}
 
-  reaction(m.key) -> m.restart, c.restart {=
+  reaction(m.key) -> m.restart, cL.restart, cR.restart {=
     // If backspace: reset simulation
     // If q or Q: quit
     if (m.key->value.act==GLFW_PRESS) {
       if (m.key->value.key==GLFW_KEY_BACKSPACE) {
         lf_set(m.restart, true);
         for (int i = 0; i < 8; i++) {
-          lf_set(c[i].restart, true);
+          lf_set(cL[i].restart, true);
+          lf_set(cR[i].restart, true);
         }
       } else if (m.key->value.key==GLFW_KEY_Q) {
         lf_request_stop();
@@ -132,25 +144,41 @@ main reactor controller(dataset: int = 0){
     lf_set(m.read_state, true);
   =}
 
-  reaction(m.joint_pos, m.joint_vel) {=
+  reaction(m.Ljoint_pos, m.Ljoint_vel, m.Rjoint_pos, m.Rjoint_vel) {=
     lf_print(
-        "qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f",
-        m.joint_pos[0]->value,
-        m.joint_pos[1]->value,
-        m.joint_pos[2]->value,
-        m.joint_pos[3]->value,
-        m.joint_pos[4]->value,
-        m.joint_pos[5]->value,
-        m.joint_pos[6]->value,
-        m.joint_pos[7]->value,
-        m.joint_vel[0]->value,
-        m.joint_vel[1]->value,
-        m.joint_vel[2]->value,
-        m.joint_vel[3]->value,
-        m.joint_vel[4]->value,
-        m.joint_vel[5]->value,
-        m.joint_vel[6]->value,
-        m.joint_vel[7]->value);
+        "L qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | R qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | L qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | R qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f",
+        m.Ljoint_pos[0]->value,
+        m.Ljoint_pos[1]->value,
+        m.Ljoint_pos[2]->value,
+        m.Ljoint_pos[3]->value,
+        m.Ljoint_pos[4]->value,
+        m.Ljoint_pos[5]->value,
+        m.Ljoint_pos[6]->value,
+        m.Ljoint_pos[7]->value,
+        m.Rjoint_pos[0]->value,
+        m.Rjoint_pos[1]->value,
+        m.Rjoint_pos[2]->value,
+        m.Rjoint_pos[3]->value,
+        m.Rjoint_pos[4]->value,
+        m.Rjoint_pos[5]->value,
+        m.Rjoint_pos[6]->value,
+        m.Rjoint_pos[7]->value,
+        m.Ljoint_vel[0]->value,
+        m.Ljoint_vel[1]->value,
+        m.Ljoint_vel[2]->value,
+        m.Ljoint_vel[3]->value,
+        m.Ljoint_vel[4]->value,
+        m.Ljoint_vel[5]->value,
+        m.Ljoint_vel[6]->value,
+        m.Ljoint_vel[7]->value,
+        m.Rjoint_vel[0]->value,
+        m.Rjoint_vel[1]->value,
+        m.Rjoint_vel[2]->value,
+        m.Rjoint_vel[3]->value,
+        m.Rjoint_vel[4]->value,
+        m.Rjoint_vel[5]->value,
+        m.Rjoint_vel[6]->value,
+        m.Rjoint_vel[7]->value);
   =}
 }
 

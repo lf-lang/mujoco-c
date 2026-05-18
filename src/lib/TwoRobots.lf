@@ -1,0 +1,47 @@
+target C {
+  keepalive: true,  // Because of physical action.
+  files: "../models/two_robots"
+ // files: "../models/trossen_arm_mujoco/trossen_arm_mujoco/assets/wxai"
+}
+import MuJoCoAuto from "MuJoCoAuto.lf"
+
+/**
+ * Two robots in one scene combining MuJoCo WidowX AI and MuJoCo VX300S robots. 
+ * It has 2 arms where each of the has 6 joints
+ * and a gripper with 2 fingers, which are controlled by 16 actuators in total.
+ *
+ * @author Edward A. Lee
+ */
+ 
+reactor TwoRobots(
+    model_file: string = {=
+      LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "two_robots" LF_FILE_SEPARATOR "scene.xml";
+    // LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "wxai" LF_FILE_SEPARATOR "scene.xml"
+    =})
+    extends MuJoCoAuto {
+  input[8] Lmotor: double
+  input[8] Rmotor: double
+  input read_state: bool
+  output[8] Ljoint_pos: double
+  output[8] Ljoint_vel: double
+  output[8] Rjoint_pos: double
+  output[8] Rjoint_vel: double
+
+  reaction(read_state) -> Ljoint_pos, Ljoint_vel, Rjoint_pos, Rjoint_vel {=
+    if (!read_state->value) return;
+    for (int i = 0; i < 8; i++) {
+      lf_set(Ljoint_pos[i], self->context.d->qpos[i]);
+      lf_set(Ljoint_vel[i], self->context.d->qvel[i]);
+      lf_set(Rjoint_pos[i], self->context.d->qpos[8 + i]);
+      lf_set(Rjoint_vel[i], self->context.d->qvel[8 + i]);
+    }
+  =}
+  reaction(Rmotor,Lmotor) {=
+    for (int i = 0; i < 8; i++) {
+      self->context.d->ctrl[i] = Lmotor[i]->value;
+      self->context.d->ctrl[8 + i] = Rmotor[i]->value;
+    }
+  =}
+
+
+}

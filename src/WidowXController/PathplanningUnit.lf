@@ -16,23 +16,19 @@
 
 target C
 
-import FeedForward from "FFwd.lf"
 import Pathplanner from "Pathplanner.lf"
 
 reactor PathplanningUnit(
-    period: time = 100 ms, factor: double = 0.1, sin: bool = true, high_limit: double = 0.0, low_limit: double = 0.0, step: double = 0.02) {
+    period: time = 100 ms, high_limit: double = 0.0, low_limit: double = 0.0, step: double = 0.02, bank_index: int = 0, waypoint_file: string = "") {
     output desired: double;
-    output feedforward: double;
 
-    pp = new Pathplanner(period = period, factor = factor,
-    sin = sin,
+    pp = new Pathplanner(period = period, 
     high_limit = high_limit,
     low_limit = low_limit,
-    step = step);
-    //ff = new FeedForward(); 
+    step = step,
+    bank_index = bank_index,
+    waypoint_file = waypoint_file);
 
-   // pp.desired -> ff.desired;
     pp.desired -> desired;
-    //ff.ff -> feedforward;
     
 }

@@ -1,0 +1,39 @@
+target C {
+  keepalive: true,  // Because of physical action.
+  files: "../models/mujoco_menagerie/trossen_vx300s"
+}
+import MuJoCoAuto from "MuJoCoAuto.lf"
+
+/**
+ * MuJoCo MuJoCoVX300s robot. 
+ * It has 2 arms where each of the has 6 joints
+ * and a gripper with 2 fingers, which are controlled by 8 actuators in total.
+ *
+ * @author Edward A. Lee
+ */
+ 
+reactor MuJoCoVX300s(
+    model_file: string = {=
+      LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "trossen_vx300s" LF_FILE_SEPARATOR "scene.xml"
+    =})
+    extends MuJoCoAuto {
+  input[8] motor: double
+  input read_state: bool
+  output[8] joint_pos: double
+  output[8] joint_vel: double
+
+  reaction(motor) {=
+    advance_simulator();
+    for (int i = 0; i < 8; i++) {
+      self->context.d->ctrl[i] = motor[i]->value;
+    }
+  =}
+
+  reaction(read_state) -> joint_pos, joint_vel {=
+    if (!read_state->value) return;
+    for (int i = 0; i < 8; i++) {
+      lf_set(joint_pos[i], self->context.d->qpos[i]);
+      lf_set(joint_vel[i], self->context.d->qvel[i]);
+    }
+  =}
+}
