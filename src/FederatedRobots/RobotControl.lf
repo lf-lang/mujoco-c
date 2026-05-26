@@ -1,0 +1,80 @@
+/*
+* Generates periodic joint trajectories for the robot.
+* Produces waypoint-driven position references for a single joint.
+*
+* Responsibilities:
+*   - Control each actuator
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+target C;
+
+import PathplanningUnit from "PathplanningUnit.lf"
+import ReadSensorDataUnit from "ReadSensorDataUnit.lf"
+import MotorControlUnit from "MotorControlUnit.lf"
+
+reactor RobotControl(
+    period: time = 100 ms,
+    dataset: int = 0,
+    step: double = 0.05,
+    high_limit: double = 1.0,
+    low_limit: double = -1.0,
+    bank_index: int = 0,
+    parameter_file: string = "",
+    waypoint_file: string = "") {
+  input restart: bool
+  input qpos: double
+  input qvel: double
+  output command: double
+  timer t(0, period)
+  state motor: double = 0.0
+
+
+  reaction(startup) {=
+    if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
+      int n = lf_initialize_double(
+          self->parameter_file,
+          ',',
+          (size_t)((9 * self->dataset) + self->bank_index + 1), // +1 skips the header row
+          &self->step,
+          &self->high_limit,
+          &self->low_limit,
+          NULL);
+    }
+  =}
+
+  reaction(restart) {=
+    self->motor = 0.0;
+  =}
+
+  planner = new PathplanningUnit(
+    period = period,
+    high_limit = high_limit,
+    low_limit = low_limit,
+    step = step, 
+    bank_index = bank_index,        
+    waypoint_file = waypoint_file);
+  motor_ctrl = new MotorControlUnit();
+  ReadData = new ReadSensorDataUnit(period = period);
+
+  // State feedback  → control
+  qpos -> ReadData.qpos;
+  qvel -> ReadData.qvel;
+  // Path planner → control
+  planner.desired -> motor_ctrl.desired;
+ // planner.feedforward -> motor_ctrl.ff;
+  motor_ctrl.motor -> command;
+
+  // Control → robot
+ /* reaction(t) -> command {=
+    lf_set(command, self->motor);
+    self->motor += self->step;
+    if (self->motor > self->high_limit || self->motor < self->low_limit) {
+      self->step = -self->step;
+    }
+  =}*/
+
+}

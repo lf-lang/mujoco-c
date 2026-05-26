@@ -28,11 +28,9 @@ reactor ReadSensorDataUnit(
     state last_qvel: double = 0.0;
     
     reaction(qpos) {=
-        printf("Current qpos: %f\n", qpos->value);
         self->last_qpos = qpos->value;
     =}
      reaction(qvel) {=
-        printf("Current qvel: %f\n", qvel->value);
         self->last_qvel = qvel->value;
     =}
     reaction(t) -> last_qpos, last_qvel {=

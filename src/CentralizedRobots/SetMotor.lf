@@ -24,7 +24,6 @@ reactor SetMotor(period: time = 100 ms) {
         self->last_motor = motor->value;
     =}
     reaction(t) -> command {=
-         printf("Sending motors: %f \n", self->last_motor);
          lf_set(command, self->last_motor);
     =}
 }

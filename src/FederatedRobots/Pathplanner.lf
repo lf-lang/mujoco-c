@@ -1,0 +1,207 @@
+/*
+* Generates periodic joint trajectories for the robot.
+* Produces waypoint-driven position references for a single joint.
+*
+* Responsibilities:
+*   - Load one shared waypoint CSV file per joint planner
+*   - Select the joint value from the column matching bank_index
+*   - Hold each target for dwell_ticks and then advance to the next row
+*   - Wrap to the first waypoint row when the file ends
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+target C
+
+preamble {=
+  #include <math.h>
+  #include "initialize_from_file.h"
+
+  static char* trim_whitespace(char* s) {
+      char* end;
+      while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') {
+          s++;
+      }
+      if (*s == '\0') {
+          return s;
+      }
+      end = s + strlen(s) - 1;
+      while (end > s && (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')) {
+          *end-- = '\0';
+      }
+      return s;
+  }
+
+  static int count_csv_data_rows(const char* filename) {
+      FILE* f = fopen(filename, "r");
+      if (!f) {
+          return 0;
+      }
+      char line[SC_CSV_LINE_MAX];
+      int count = 0;
+      while (fgets(line, sizeof(line), f)) {
+          char* p = trim_whitespace(line);
+          if (*p != '\0') {
+              count++;
+          }
+      }
+      fclose(f);
+      return count > 0 ? count - 1 : 0;
+  }
+
+  static int read_waypoint_row(const char* filename, size_t row_number, double* values, int max_values) {
+      FILE* f = fopen(filename, "r");
+      if (!f) {
+          return -1;
+      }
+      char line[SC_CSV_LINE_MAX];
+      size_t row_count = 0;
+      while (fgets(line, sizeof(line), f)) {
+          if (row_count == row_number) {
+              break;
+          }
+          row_count++;
+      }
+      if (row_count != row_number) {
+          fclose(f);
+          return -1;
+      }
+      fclose(f);
+
+      char* row = line;
+      if (strlen(row) >= 3 && (unsigned char)row[0] == 0xEF && (unsigned char)row[1] == 0xBB &&
+          (unsigned char)row[2] == 0xBF) {
+          row += 3;
+      }
+      row[strcspn(row, "\r\n")] = '\0';
+
+      int count = 0;
+      int column = 0;
+      char* token = strtok(row, ",");
+      while (token != NULL && count < max_values) {
+          char* field = trim_whitespace(token);
+          char* end = NULL;
+          double parsed = strtod(field, &end);
+          if (column == 0) {
+              if (end != field && *end == '\0') {
+                  values[count++] = parsed;
+              }
+          } else {
+              if (end == field || *end != '\0') {
+                  return -1;
+              }
+              values[count++] = parsed;
+          }
+          column++;
+          token = strtok(NULL, ",");
+      }
+      return count;
+  }
+=}
+
+reactor Pathplanner(
+    period: time = 100 ms,
+    high_limit: double = 0.0,
+    low_limit: double = 0.0,
+    step: double = 0.02,
+    bank_index: int = 0,
+    waypoint_file: string = "") {
+
+    timer t(0, period);
+    output desired: double;
+
+    state current: double = 0.0;
+    state bot_target: double = 0.0;
+    state waypoint_row: int = 1;
+    state row_length: int = 0;
+    state total_waypoint_rows: int = 0;
+    state dwell_ticks: int = 1;
+    state dwell_count: int = 0;
+    // 32 is the maximum number of numeric columns we can read from one row.
+    // The actual number of columns is determined by read_waypoint_row()
+    // and stored in row_length.
+    state values: double[32] = {0.0};
+
+    reaction(startup) {=
+        if (self->waypoint_file != NULL && self->waypoint_file[0] != '\0') {
+            self->total_waypoint_rows = count_csv_data_rows(self->waypoint_file);
+            self->row_length = read_waypoint_row(
+                self->waypoint_file,
+                (size_t)self->waypoint_row,
+                &self->values[0],
+                32);
+        } else {
+            self->row_length = 0;
+        }
+
+        if (self->row_length <= 1) {
+            self->current = self->low_limit;
+            self->bot_target = self->low_limit;
+            self->dwell_ticks = 1;
+        } else {
+            self->dwell_ticks = (int)self->values[self->row_length - 1];
+            if (self->dwell_ticks <= 0) {
+                self->dwell_ticks = 1;
+            }
+            if (self->bank_index < self->row_length - 1) {
+                self->bot_target = self->values[self->bank_index];
+            } else {
+                self->bot_target = self->current;
+            }
+            self->current = self->bot_target;
+        }
+    =}
+
+    reaction(t) -> desired {=
+        if (self->row_length <= 1) {
+            lf_set(desired, self->current);
+            return;
+        }
+
+        double error = self->bot_target - self->current;
+        double abs_error = error < 0.0 ? -error : error;
+
+        if (abs_error <= self->step) {
+            self->current = self->bot_target;
+        } else {
+            self->current += (error > 0.0 ? self->step : -self->step);
+        }
+
+        lf_set(desired, self->current);
+
+        if (self->current == self->bot_target) {
+            self->dwell_count += 1;
+            if (self->dwell_count >= self->dwell_ticks) {
+                self->dwell_count = 0;
+                self->waypoint_row += 1;
+                if (self->total_waypoint_rows > 0 && self->waypoint_row > self->total_waypoint_rows) {
+                    self->waypoint_row = 1;
+                }
+                self->row_length = read_waypoint_row(
+                    self->waypoint_file,
+                    (size_t)self->waypoint_row,
+                    &self->values[0],
+                    32);
+
+                if (self->row_length <= 1) {
+                    self->waypoint_row = 1;
+                    self->row_length = read_waypoint_row(
+                        self->waypoint_file,
+                        (size_t)self->waypoint_row,
+                        &self->values[0],
+                        32);
+                }
+
+                self->dwell_ticks = (int)self->values[self->row_length - 1];
+                if (self->dwell_ticks <= 0) {
+                    self->dwell_ticks = 1;
+                }
+                if (self->bank_index < self->row_length - 1) {
+                    self->bot_target = self->values[self->bank_index];
+                }
+            }
+        }
+    =}
+}

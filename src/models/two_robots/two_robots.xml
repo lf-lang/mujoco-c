@@ -318,23 +318,26 @@
     </body>
   </worldbody>
 
+   <equality>
+    <joint joint1="left_finger" joint2="right_finger" polycoef="0 -1 0 0 0"/>
+  </equality>
+
   <contact>
     <exclude body1="base_link" body2="shoulder_link"/>
     <exclude body1="right/root" body2="right/link_1"/>  
     <exclude body1="left_finger_link" body2="right_finger_link"/>
     <exclude body1="right/carriage_left" body2="right/carriage_right"/>
-
   </contact>
 
   <actuator>
-    <position name="vx300s/waist" joint="waist" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/shoulder" joint="shoulder" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/elbow" joint="elbow" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/forearm_roll" joint="forearm_roll" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/wrist_angle" joint="wrist_angle" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/wrist_rotate" joint="wrist_rotate" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/left_finger" joint="left_finger" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
-    <position name="vx300s/right_finger" joint="right_finger" class="vx300s" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="waist" joint="waist" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="shoulder" joint="shoulder" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="elbow" joint="elbow" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="forearm_roll" joint="forearm_roll" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="wrist_angle" joint="wrist_angle" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="wrist_rotate" joint="wrist_rotate" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="finger/left_finger" joint="left_finger" ctrllimited="true" ctrlrange="-1.0 1.0"/>
+    <position class="vx300s" name="finger/right_finger" joint="right_finger" ctrllimited="true" ctrlrange="-1.0 1.0"/>
 
     <position name="right/joint_0" joint="right/joint_0" class="wxai" ctrllimited="true" ctrlrange="-1.0 1.0"/>
     <position name="right/joint_1" joint="right/joint_1" class="wxai" ctrllimited="true" ctrlrange="-1.0 1.0"/>

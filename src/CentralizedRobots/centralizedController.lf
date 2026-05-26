@@ -98,7 +98,7 @@ reactor RobotControl(
 
 }
 
-main reactor controller(dataset: int = 0){
+main reactor centralizedController(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
   m = new TwoRobots(frame_period = 33 ms)
   cL = new[8] RobotControl(

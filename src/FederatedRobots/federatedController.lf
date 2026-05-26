@@ -1,0 +1,148 @@
+/*
+* Top-level reactor that composes the full robot control system.
+* Containing a path planning unit, a RobotStateReceiver (reading sensor values from the robot) and a motor control unit. 
+*
+* See [README.md](../README.md) for prerequisites and installation instructions.
+* 
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+
+target C {
+  // On MacOS, GLFW can only be accessed from the main thread.
+  // The MuJoCoPanda reactor needs to be on this thread.
+  // Currently, the only way to ensure this is to set the workers to 1.
+  workers: 1,
+  // Because of physical action for the keypresses.
+  keepalive: true,
+  // To use the lf_initialize_double function, we need to include the following:
+  cmake-include: ["/lib/c/reactor-c/util/initialize_from_file.cmake"],
+  files: [
+      "/lib/c/reactor-c/util/initialize_from_file.c",
+      "/lib/c/reactor-c/util/initialize_from_file.h"]
+}
+
+import TwoRobots from "../lib/TwoRobots.lf"
+import RobotControl from "RobotControl.lf"
+//import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
+//import MuJoCoVX300S from "../lib/MuJoCoVX300S.lf"
+
+preamble {=
+  #include "initialize_from_file.h"
+=}
+
+reactor LeftRobot(dataset: int = 0) {
+  input[8] lrestart: bool;
+  input[8] lqpos: double;
+  input[8] lqvel: double;
+  output[8] lcommand: double;
+  cL = new[8] RobotControl(
+    dataset=dataset,
+    period = 100 ms,
+    parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =},
+    waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersvx300s.csv" =})
+  
+  lrestart -> cL.restart;
+  lqpos -> cL.qpos;
+  lqvel -> cL.qvel;
+  cL.command -> lcommand;
+  
+}
+
+reactor RightRobot(dataset: int = 0) {
+  input[8] rrestart: bool;
+  input[8] rqpos: double;
+  input[8] rqvel: double;
+  output[8] rcommand: double;
+
+
+   cR = new[8] RobotControl(
+      dataset=dataset,
+      period = 100 ms,
+      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =},
+      waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersWidowX.csv" =})
+    
+    rrestart -> cR.restart;
+    rqpos -> cR.qpos;
+    rqvel -> cR.qvel;
+    cR.command -> rcommand;
+
+}
+
+federated reactor federatedController(dataset: int = 0){
+  timer read_state_timer(0, 500 ms)
+  m = new TwoRobots(frame_period = 33 ms);
+  lR = new LeftRobot(dataset=dataset);
+  rR = new RightRobot(dataset=dataset);
+
+  
+  lR.lcommand -> m.Lmotor;
+  rR.rcommand -> m.Rmotor;
+  m.Ljoint_pos -> lR.lqpos;
+  m.Ljoint_vel-> lR.lqvel;
+  m.Rjoint_pos -> rR.rqpos;
+  m.Rjoint_vel -> rR.rqvel;
+
+
+  reaction(startup) {=
+    lf_print("*** Backspace to reset.");
+    lf_print("*** Type q to quit.\n");
+  =}
+
+  reaction(m.key) -> m.restart {=
+    // If backspace: reset simulation
+    // If q or Q: quit
+    if (m.key->value.act==GLFW_PRESS) {
+      if (m.key->value.key==GLFW_KEY_BACKSPACE) {
+        lf_set(m.restart, true);
+      } else if (m.key->value.key==GLFW_KEY_Q) {
+        lf_request_stop();
+      }
+    }
+  =}
+  
+
+  reaction(read_state_timer) -> m.read_state {=
+    lf_set(m.read_state, true);
+  =}
+
+  reaction(m.Ljoint_pos, m.Ljoint_vel, m.Rjoint_pos, m.Rjoint_vel) {=
+    lf_print(
+        "L qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | R qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | L qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | R qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f",
+        m.Ljoint_pos[0]->value,
+        m.Ljoint_pos[1]->value,
+        m.Ljoint_pos[2]->value,
+        m.Ljoint_pos[3]->value,
+        m.Ljoint_pos[4]->value,
+        m.Ljoint_pos[5]->value,
+        m.Ljoint_pos[6]->value,
+        m.Ljoint_pos[7]->value,
+        m.Rjoint_pos[0]->value,
+        m.Rjoint_pos[1]->value,
+        m.Rjoint_pos[2]->value,
+        m.Rjoint_pos[3]->value,
+        m.Rjoint_pos[4]->value,
+        m.Rjoint_pos[5]->value,
+        m.Rjoint_pos[6]->value,
+        m.Rjoint_pos[7]->value,
+        m.Ljoint_vel[0]->value,
+        m.Ljoint_vel[1]->value,
+        m.Ljoint_vel[2]->value,
+        m.Ljoint_vel[3]->value,
+        m.Ljoint_vel[4]->value,
+        m.Ljoint_vel[5]->value,
+        m.Ljoint_vel[6]->value,
+        m.Ljoint_vel[7]->value,
+        m.Rjoint_vel[0]->value,
+        m.Rjoint_vel[1]->value,
+        m.Rjoint_vel[2]->value,
+        m.Rjoint_vel[3]->value,
+        m.Rjoint_vel[4]->value,
+        m.Rjoint_vel[5]->value,
+        m.Rjoint_vel[6]->value,
+        m.Rjoint_vel[7]->value);
+  =}
+}
+

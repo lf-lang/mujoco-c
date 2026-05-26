@@ -28,6 +28,22 @@ reactor TwoRobots(
   output[8] Rjoint_vel: double
 
   reaction(read_state) -> Ljoint_pos, Ljoint_vel, Rjoint_pos, Rjoint_vel {=
+    for(int i = 0; i < self->context.m->nu; i++) {
+    printf("Actuator %d: %s\n",
+           i,
+           mj_id2name(
+               self->context.m,
+               mjOBJ_ACTUATOR,
+               i));
+    }
+    for (int i = 0; i < self->context.m->njnt; i++) {
+      printf("Joint %d: %s\n",
+           i,
+           mj_id2name(
+               self->context.m,
+               mjOBJ_JOINT,
+               i));
+    }
     if (!read_state->value) return;
     for (int i = 0; i < 8; i++) {
       lf_set(Ljoint_pos[i], self->context.d->qpos[i]);
@@ -37,6 +53,13 @@ reactor TwoRobots(
     }
   =}
   reaction(Rmotor,Lmotor) {=
+    printf("LEFT CTRL: ");
+
+    for (int i = 0; i < 8; i++) {
+        printf("%f ", Lmotor[i]->value);
+        self->context.d->ctrl[i] = Lmotor[i]->value;
+    }
+    printf("\n");
     for (int i = 0; i < 8; i++) {
       self->context.d->ctrl[i] = Lmotor[i]->value;
       self->context.d->ctrl[8 + i] = Rmotor[i]->value;
