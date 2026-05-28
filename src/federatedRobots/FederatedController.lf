@@ -34,7 +34,6 @@ preamble {=
 =}
 
 reactor LeftRobot(dataset: int = 0) {
-  input[8] lrestart: bool;
   input[8] lqpos: double;
   input[8] lqvel: double;
   output[8] lcommand: double;
@@ -44,7 +43,8 @@ reactor LeftRobot(dataset: int = 0) {
     parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =},
     waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersvx300s.csv" =})
   
-  lrestart -> cL.restart;
+  
+  
   lqpos -> cL.qpos;
   lqvel -> cL.qvel;
   cL.command -> lcommand;
@@ -52,7 +52,6 @@ reactor LeftRobot(dataset: int = 0) {
 }
 
 reactor RightRobot(dataset: int = 0) {
-  input[8] rrestart: bool;
   input[8] rqpos: double;
   input[8] rqvel: double;
   output[8] rcommand: double;
@@ -63,15 +62,15 @@ reactor RightRobot(dataset: int = 0) {
       period = 100 ms,
       parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =},
       waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersWidowX.csv" =})
-    
-    rrestart -> cR.restart;
+  
     rqpos -> cR.qpos;
     rqvel -> cR.qvel;
     cR.command -> rcommand;
 
+
 }
 
-federated reactor federatedController(dataset: int = 0){
+federated reactor FederatedController(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
   m = new TwoRobots(frame_period = 33 ms);
   lR = new LeftRobot(dataset=dataset);

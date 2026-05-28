@@ -16,6 +16,7 @@
 target C
 
 preamble {=
+  #include <string.h>
   #include <math.h>
   #include "initialize_from_file.h"
 
