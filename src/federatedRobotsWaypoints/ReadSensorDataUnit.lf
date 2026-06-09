@@ -1,0 +1,40 @@
+/*
+*   Generates desired joint trajectories for all robot joints
+*   and computes corresponding feedforward velocity terms.
+*   Each joint is driven by an independent Pathplanner reactor.
+*
+* Responsibilities:
+*   - Produce time-varying desired joint positions
+*   - Provide feedforward velocity signals for improved
+*     tracking in the cascaded PID controller
+*
+* Date:
+*   2026-03-30
+*
+* @author Friederike Bruns
+*/
+
+target C
+
+
+reactor ReadSensorDataUnit(
+    period: time = 100 ms) {       
+    timer t(0, period);
+    input qpos: double;
+    input qvel: double;
+    output last_qpos: double;
+    output last_qvel: double;
+    state last_qpos: double = 0.0;
+    state last_qvel: double = 0.0;
+    
+    reaction(qpos) {=
+        self->last_qpos = qpos->value;
+    =}
+     reaction(qvel) {=
+        self->last_qvel = qvel->value;
+    =}
+    reaction(t) -> last_qpos, last_qvel {=
+        lf_set(last_qpos, self->last_qpos); 
+        lf_set(last_qvel, self->last_qvel);
+    =}
+}

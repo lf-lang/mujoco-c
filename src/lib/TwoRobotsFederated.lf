@@ -13,10 +13,10 @@ import MuJoCoAuto from "MuJoCoAuto.lf"
  * @author Edward A. Lee
  */
  
-reactor TwoRobots(
+reactor TwoRobotsFederated(
     model_file: string = {=
-       //LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "federate__m/two_robots" LF_FILE_SEPARATOR "scene.xml";
-      LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "two_robots" LF_FILE_SEPARATOR "scene.xml";
+      LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "federate__m/two_robots" LF_FILE_SEPARATOR "scene.xml";
+      //LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "two_robots" LF_FILE_SEPARATOR "scene.xml";
     // LF_SOURCE_GEN_DIRECTORY LF_FILE_SEPARATOR "wxai" LF_FILE_SEPARATOR "scene.xml"
     =})
     extends MuJoCoAuto {

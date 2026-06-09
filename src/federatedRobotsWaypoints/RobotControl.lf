@@ -26,10 +26,17 @@ reactor RobotControl(
     period: time = 100 ms,
     dataset: int = 0,
     step: double = 0.05,
-    high_limit: double = 1.0,
-    low_limit: double = -1.0,
     bank_index: int = 0,
-    parameter_file: string = "") {
+    w0: double = 1.0,
+    w1: double = 1.0,
+    w2: double = 1.0,
+    w3: double = 1.0,
+    w4: double = 1.0,
+    w5: double = 1.0,
+    w6: double = 1.0,
+    w7: double = 1.0,
+    w8: double = 1.0,
+    waypoint_file: string = "") {
   input restart: bool
   input qpos: double
   input qvel: double
@@ -37,18 +44,27 @@ reactor RobotControl(
   timer t(0, period)
   state motor: double = 0.0
 
-  reaction(startup) {=
-    if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
-      int n = lf_initialize_double(
-          self->parameter_file,
-          ',',
-          (size_t)((9 * self->dataset) + self->bank_index + 1), // +1 skips the header row
-          &self->step,
-          &self->high_limit,
-          &self->low_limit,
-          NULL);
+  reaction(startup){=
+    if (self->waypoint_file != NULL &&
+        self->waypoint_file[0] != '\0') {
+
+        lf_initialize_double(
+            self->waypoint_file,
+            ',',
+            (size_t)((9 * self->dataset) + self->bank_index + 1), // +1 skips the header row
+            &self->w0,
+            &self->w1,
+            &self->w2,
+            &self->w3,
+            &self->w4,
+            &self->w5,
+            &self->w6,
+            &self->w7,
+            &self->w8,
+            NULL);
     }
   =}
+
 
   reaction(restart) {=
     self->motor = 0.0;
@@ -57,8 +73,15 @@ reactor RobotControl(
   planner = new Pathplanner(
   period = period,
   step = step, 
-  high_limit = 1.0,
-  low_limit = -1.0);
+  w0 = w0,
+  w1 = w1,
+  w2 = w2,
+  w3 = w3,
+  w4 = w4,
+  w5 = w5,
+  w6 = w6,
+  w7 = w7,
+  w8 = w8);
   set_motor = new SetMotor(period = period);
   ReadData = new ReadSensorDataUnit(period = period);
 
@@ -67,7 +90,16 @@ reactor RobotControl(
   qvel -> ReadData.qvel;
   // Path planner → control
   planner.desired -> set_motor.motor;
- // planner.feedforward -> set_motor.ff;
+ // planner.feedforward -> motor_ctrl.ff;
   set_motor.command -> command;
+
+  // Control → robot
+ /* reaction(t) -> command {=
+    lf_set(command, self->motor);
+    self->motor += self->step;
+    if (self->motor > self->high_limit || self->motor < self->low_limit) {
+      self->step = -self->step;
+    }
+  =}*/
 
 }

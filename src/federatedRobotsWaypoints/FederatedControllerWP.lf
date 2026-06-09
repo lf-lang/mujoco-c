@@ -24,107 +24,80 @@ target C {
       "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
-import TwoRobots from "../lib/TwoRobots.lf"
-//import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
-//import MuJoCoVX300S from "../lib/MuJoCoVX300S.lf"
-import Pathplanner from "Pathplanner.lf"
-import ReadSensorDataUnit from "ReadSensorDataUnit.lf"
-import SetMotor from "SetMotor.lf"
+import TwoRobotsFederated from "../lib/TwoRobotsFederated.lf"
+import RobotControl from "RobotControl.lf"
 
 preamble {=
   #include "initialize_from_file.h"
 =}
 
-reactor RobotControl(
-    period: time = 100 ms,
-    dataset: int = 0,
-    step: double = 0.05,
-    high_limit: double = 1.0,
-    low_limit: double = -1.0,
-    bank_index: int = 0,
-    parameter_file: string = "") {
-  input restart: bool
-  input qpos: double
-  input qvel: double
-  output command: double
-  timer t(0, period)
-  state motor: double = 0.0
+reactor LeftRobot(dataset: int = 0) {
+  input[8] lqpos: double;
+  input[8] lqvel: double;
+  output[8] lcommand: double;
+  cL = new[8] RobotControl(
+    dataset=dataset,
+    period = 100 ms,
+    waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersvx300sTest.csv" =})
+  
+  
+  
+  lqpos -> cL.qpos;
+  lqvel -> cL.qvel;
+  cL.command -> lcommand;
+  
+}
+
+reactor RightRobot(dataset: int = 0) {
+  input[8] rqpos: double;
+  input[8] rqvel: double;
+  output[8] rcommand: double;
 
 
-  reaction(startup) {=
-    if (self->parameter_file != NULL && self->parameter_file[0] != '\0') {
-      int n = lf_initialize_double(
-          self->parameter_file,
-          ',',
-          (size_t)((9 * self->dataset) + self->bank_index + 1), // +1 skips the header row
-          &self->step,
-          &self->high_limit,
-          &self->low_limit,
-          NULL);
-    }
-  =}
+   cR = new[8] RobotControl(
+      dataset=dataset,
+      period = 100 ms,
+      waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersWidowXTest.csv" =})
+  
+    rqpos -> cR.qpos;
+    rqvel -> cR.qvel;
+    cR.command -> rcommand;
 
-  reaction(restart) {=
-    self->motor = 0.0;
-  =}
-
-  planner = new Pathplanner(
-  period = period,
-  step = step, 
-  high_limit = 1.0,
-  low_limit = -1.0);
-  motor_ctrl = new SetMotor(period = period);
-  ReadData = new ReadSensorDataUnit(period = period);
-
-  // State feedback  → control
-  qpos -> ReadData.qpos;
-  qvel -> ReadData.qvel;
-  // Path planner → control
-  planner.desired -> motor_ctrl.motor;
- // planner.feedforward -> set_motor.ff;
-  motor_ctrl.command -> command;
 
 }
 
-main reactor CentralizedController(dataset: int = 0){
+federated reactor FederatedControllerWP(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
-  m = new TwoRobots(frame_period = 33 ms)
-  cL = new[8] RobotControl(
-      dataset=dataset,
-      period = 100 ms,
-      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =})
-  cR = new[8] RobotControl(
-      dataset=dataset,
-      period = 100 ms,
-      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =})
+  m = new TwoRobotsFederated(frame_period = 33 ms);
+  lR = new LeftRobot(dataset=dataset);
+  rR = new RightRobot(dataset=dataset);
 
-  cL.command -> m.Lmotor;
-  cR.command -> m.Rmotor;
-  m.Ljoint_pos -> cL.qpos;
-  m.Ljoint_vel -> cL.qvel;
-  m.Rjoint_pos -> cR.qpos;
-  m.Rjoint_vel -> cR.qvel;
+  
+  lR.lcommand -> m.Lmotor;
+  rR.rcommand -> m.Rmotor;
+  m.Ljoint_pos -> lR.lqpos;
+  m.Ljoint_vel-> lR.lqvel;
+  m.Rjoint_pos -> rR.rqpos;
+  m.Rjoint_vel -> rR.rqvel;
+
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
     lf_print("*** Type q to quit.\n");
   =}
 
-  reaction(m.key) -> m.restart, cL.restart, cR.restart {=
+  reaction(m.key) -> m.restart {=
     // If backspace: reset simulation
     // If q or Q: quit
     if (m.key->value.act==GLFW_PRESS) {
       if (m.key->value.key==GLFW_KEY_BACKSPACE) {
         lf_set(m.restart, true);
-        for (int i = 0; i < 8; i++) {
-          lf_set(cL[i].restart, true);
-          lf_set(cR[i].restart, true);
-        }
       } else if (m.key->value.key==GLFW_KEY_Q) {
         lf_request_stop();
       }
     }
   =}
+  
 
   reaction(read_state_timer) -> m.read_state {=
     lf_set(m.read_state, true);

@@ -24,10 +24,8 @@ target C {
       "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
-import TwoRobots from "../lib/TwoRobots.lf"
+import TwoRobotsFederated from "../lib/TwoRobotsFederated.lf"
 import RobotControl from "RobotControl.lf"
-//import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
-//import MuJoCoVX300S from "../lib/MuJoCoVX300S.lf"
 
 preamble {=
   #include "initialize_from_file.h"
@@ -40,8 +38,7 @@ reactor LeftRobot(dataset: int = 0) {
   cL = new[8] RobotControl(
     dataset=dataset,
     period = 100 ms,
-    parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =},
-    waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersvx300s.csv" =})
+    parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =})
   
   
   
@@ -60,8 +57,7 @@ reactor RightRobot(dataset: int = 0) {
    cR = new[8] RobotControl(
       dataset=dataset,
       period = 100 ms,
-      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =},
-      waypoint_file = {= LF_SOURCE_DIRECTORY "/WaypointParametersWidowX.csv" =})
+      parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =})
   
     rqpos -> cR.qpos;
     rqvel -> cR.qvel;
@@ -72,7 +68,7 @@ reactor RightRobot(dataset: int = 0) {
 
 federated reactor FederatedController(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
-  m = new TwoRobots(frame_period = 33 ms);
+  m = new TwoRobotsFederated(frame_period = 33 ms);
   lR = new LeftRobot(dataset=dataset);
   rR = new RightRobot(dataset=dataset);
 
