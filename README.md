@@ -115,3 +115,5 @@ Build the demos using `lfc` or `make`:
 * [CarAuto](src/CarAuto.lf): Simple drivable car.
 * [InvertedPendulum](src/InvertedPendulum.lf): Inverted pendulum demo.
 * [Panda](src/Panda.lf): Franka Emika Panda robot doing gyrations.
+* [CarLineFollow](src/CarLineFollow.lf): Single car following a figure-8 track using five line rangefinders and a PD controller.
+* [CarPlatoon](src/CarPlatoon.lf): Platoon of three line-following cars with gap-keeping and emergency-stop logic.
