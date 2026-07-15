@@ -24,7 +24,8 @@ target C {
       "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
-import TwoRobots from "../lib/TwoRobots.lf"
+import RealRobots from "RealRobots.lf"
+//import TwoRobots from "../lib/TwoRobots.lf"
 //import MuJoCoWidowX from "../lib/MuJoCoWidowX.lf"
 //import MuJoCoVX300S from "../lib/MuJoCoVX300S.lf"
 import Pathplanner from "Pathplanner.lf"
@@ -33,6 +34,14 @@ import SetMotor from "SetMotor.lf"
 
 preamble {=
   #include "initialize_from_file.h"
+  // If built without GLFW (e.g., using RealRobots instead of TwoRobots),
+  // these constants are missing. Values must match those in poll_keyboard_thread
+  // in RealRobots.lf (see there). TODO: Generalized way to poll keyboard input in C reactors.
+  #ifndef GLFW_PRESS
+  #define GLFW_PRESS 1
+  #define GLFW_KEY_BACKSPACE 259
+  #define GLFW_KEY_Q 81
+  #endif
 =}
 
 reactor RobotControl(
@@ -88,7 +97,8 @@ reactor RobotControl(
 
 main reactor CentralizedController(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
-  m = new TwoRobots(frame_period = 33 ms)
+  m = new RealRobots(left_port = "/dev/ttyUSB0", right_port = "/dev/ttyUSB1")
+  //m = new TwoRobots(frame_period = 33 ms)
   cL = new[8] RobotControl(
       dataset=dataset,
       period = 100 ms,

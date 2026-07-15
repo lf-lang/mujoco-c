@@ -54,18 +54,9 @@ reactor TwoRobots(
     }
   =}
   reaction(Rmotor,Lmotor) {=
-    printf("LEFT CTRL: ");
-
-    for (int i = 0; i < 8; i++) {
-        printf("%f ", Lmotor[i]->value);
-        self->context.d->ctrl[i] = Lmotor[i]->value;
-    }
-    printf("\n");
     for (int i = 0; i < 8; i++) {
       self->context.d->ctrl[i] = Lmotor[i]->value;
       self->context.d->ctrl[8 + i] = Rmotor[i]->value;
     }
   =}
-
-
 }
