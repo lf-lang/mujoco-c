@@ -1,0 +1,147 @@
+target C {
+  keepalive: true,
+}
+
+preamble {=
+  #define _POSIX_C_SOURCE 200809L
+  #include <stdio.h>
+  #include <unistd.h>
+  #include <termios.h>
+
+  typedef struct {
+    int key;
+    int scancode;
+    int act;
+    int mods;
+  } keypress_t;
+
+  #define KEY_ACTION_PRESS    1
+  #define KEY_CODE_BACKSPACE  259
+  #define KEY_CODE_Q          81
+=}
+
+reactor RealRobots(
+    left_port: string = "/dev/ttyUSB0",
+    right_port: string = "/dev/ttyUSB1",
+    read_state_period: time = 500 ms) {
+
+  preamble {=
+    // --- STUB: Platzhalter, bis der echte Trossen-Arm-SDK-Header verfügbar ist ---
+    static inline void* trossen_arm_connect(const char* port) {
+      (void)port;
+      return NULL;
+    }
+    static inline void trossen_arm_read_state(void* handle, double* pos, double* vel) {
+      (void)handle; (void)pos; (void)vel;
+    }
+    static inline void trossen_arm_set_motor(void* handle, int idx, double value) {
+      (void)handle; (void)idx; (void)value;
+    }
+    // --- ENDE STUB ---
+
+    static void* poll_keyboard_thread(void* arg) {
+      struct termios oldt, newt;
+      tcgetattr(STDIN_FILENO, &oldt);
+      newt = oldt;
+      newt.c_lflag &= ~(ICANON | ECHO);
+      tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+      while (1) {
+        int c = getchar();
+        keypress_t kp = {0};
+        kp.act = KEY_ACTION_PRESS;
+        if (c == 127 || c == 8) {
+          kp.key = KEY_CODE_BACKSPACE;
+        } else if (c == 'q' || c == 'Q') {
+          kp.key = KEY_CODE_Q;
+        } else {
+          continue;
+        }
+        // TODO: exakte reactor-c-Schedule-Funktion einsetzen
+        // lf_schedule_copy(arg, 0, &kp, 1);
+      }
+
+      tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+      return NULL;
+    }
+  =}
+
+  input restart: bool
+  input read_state: bool
+  input[8] Lmotor: double
+  input[8] Rmotor: double
+  output key: keypress_t
+  output restart_out: bool
+  output[8] Ljoint_pos: double
+  output[8] Ljoint_vel: double
+  output[8] Rjoint_pos: double
+  output[8] Rjoint_vel: double
+
+  state left_handle: void* = {= NULL =}
+  state right_handle: void* = {= NULL =}
+  state connected: bool = false
+
+  physical action key_pressed: keypress_t
+  timer read_state_timer(0, read_state_period)
+  
+  reaction(startup) {=
+    self->left_handle  = trossen_arm_connect(self->left_port);
+    self->right_handle = trossen_arm_connect(self->right_port);
+    self->connected = (self->left_handle != NULL && self->right_handle != NULL);
+    if (!self->connected) {
+      lf_print_warning("Keine Roboter-Hardware gefunden - Dry-Run-Modus (nur Konsole).");
+    }
+  =}
+
+  reaction(startup) -> key_pressed {=
+    lf_thread_t thread;
+    lf_thread_create(&thread, &poll_keyboard_thread, key_pressed);
+  =}
+
+reaction(key_pressed) -> key, restart_out {=
+    lf_set(key, key_pressed->value);
+    if (key_pressed->value.act == KEY_ACTION_PRESS) {
+      if (key_pressed->value.key == KEY_CODE_BACKSPACE) {
+        // TODO: Homing-Logic directly inline, e.g.:
+        // do_homing(self);
+        lf_set(restart_out, true);   // inform other Federates
+      } else if (key_pressed->value.key == KEY_CODE_Q) {
+        lf_request_stop();
+      }
+    }
+  =}
+
+  reaction(restart) {=
+    // TODO: Reference path / Homing, in case self->connected if triggered by restart input
+  =}
+
+  reaction(read_state) -> Ljoint_pos, Ljoint_vel, Rjoint_pos, Rjoint_vel {=
+    if (!read_state->value) return;
+    double lpos[8] = {0}, lvel[8] = {0}, rpos[8] = {0}, rvel[8] = {0};
+    if (self->connected) {
+      trossen_arm_read_state(self->left_handle,  lpos, lvel);
+      trossen_arm_read_state(self->right_handle, rpos, rvel);
+    }
+    for (int i = 0; i < 8; i++) {
+      lf_set(Ljoint_pos[i], lpos[i]);
+      lf_set(Ljoint_vel[i], lvel[i]);
+      lf_set(Rjoint_pos[i], rpos[i]);
+      lf_set(Rjoint_vel[i], rvel[i]);
+    }
+  =}
+
+  reaction(Lmotor, Rmotor) {=
+    if (self->connected) {
+      for (int i = 0; i < 8; i++) {
+        trossen_arm_set_motor(self->left_handle,  i, Lmotor[i]->value);
+        trossen_arm_set_motor(self->right_handle, i, Rmotor[i]->value);
+      }
+    } else {
+      printf("[DRY-RUN] Lmotor: ");
+      for (int i = 0; i < 8; i++) printf("%.4f ", Lmotor[i]->value);
+      printf("| Rmotor: ");
+      for (int i = 0; i < 8; i++) printf("%.4f ", Rmotor[i]->value);
+      printf("\n");
+    }
+  =}
+}

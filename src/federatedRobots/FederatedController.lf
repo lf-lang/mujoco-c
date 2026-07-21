@@ -24,14 +24,24 @@ target C {
       "/lib/c/reactor-c/util/initialize_from_file.h"]
 }
 
-import TwoRobotsFederated from "../lib/TwoRobotsFederated.lf"
+//import TwoRobotsFederated from "../lib/TwoRobotsFederated.lf"
+import RealRobots from "RealRobots.lf" 
 import RobotControl from "RobotControl.lf"
 
 preamble {=
   #include "initialize_from_file.h"
+  // Wenn ohne GLFW gebaut (RealRobots statt TwoRobotsFederated),
+  // fehlen diese Konstanten. Werte müssen mit poll_keyboard_thread
+  // in RealRobots.lf übereinstimmen.
+  #ifndef GLFW_PRESS
+  #define GLFW_PRESS 1
+  #define GLFW_KEY_BACKSPACE 259
+  #define GLFW_KEY_Q 81
+  #endif
 =}
 
 reactor LeftRobot(dataset: int = 0) {
+  input restart: bool;
   input[8] lqpos: double;
   input[8] lqvel: double;
   output[8] lcommand: double;
@@ -40,8 +50,12 @@ reactor LeftRobot(dataset: int = 0) {
     period = 100 ms,
     parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersvx300s.csv" =})
   
-  
-  
+  reaction(restart) -> cL.restart {=
+    for (int i = 0; i < 8; i++) {
+      lf_set(cL[i].restart, restart->value);
+    }
+  =}
+
   lqpos -> cL.qpos;
   lqvel -> cL.qvel;
   cL.command -> lcommand;
@@ -49,6 +63,7 @@ reactor LeftRobot(dataset: int = 0) {
 }
 
 reactor RightRobot(dataset: int = 0) {
+  input restart: bool;
   input[8] rqpos: double;
   input[8] rqvel: double;
   output[8] rcommand: double;
@@ -59,6 +74,11 @@ reactor RightRobot(dataset: int = 0) {
       period = 100 ms,
       parameter_file = {= LF_SOURCE_DIRECTORY "/RobotControlParametersWidowX.csv" =})
   
+    reaction(restart) -> cR.restart {=
+      for (int i = 0; i < 8; i++) {
+        lf_set(cR[i].restart, restart->value);
+      }
+    =}
     rqpos -> cR.qpos;
     rqvel -> cR.qvel;
     cR.command -> rcommand;
@@ -67,8 +87,8 @@ reactor RightRobot(dataset: int = 0) {
 }
 
 federated reactor FederatedController(dataset: int = 0){
-  timer read_state_timer(0, 500 ms)
-  m = new TwoRobotsFederated(frame_period = 33 ms);
+  m = new RealRobots(left_port = "/dev/ttyUSB0", right_port = "/dev/ttyUSB1", read_state_period = 500 ms);
+  //m = new TwoRobotsFederated(frame_period = 33 ms);
   lR = new LeftRobot(dataset=dataset);
   rR = new RightRobot(dataset=dataset);
 
@@ -79,28 +99,13 @@ federated reactor FederatedController(dataset: int = 0){
   m.Ljoint_vel-> lR.lqvel;
   m.Rjoint_pos -> rR.rqpos;
   m.Rjoint_vel -> rR.rqvel;
-
+  
+  m.restart_out -> lR.restart;
+  m.restart_out -> rR.restart;
 
   reaction(startup) {=
     lf_print("*** Backspace to reset.");
     lf_print("*** Type q to quit.\n");
-  =}
-
-  reaction(m.key) -> m.restart {=
-    // If backspace: reset simulation
-    // If q or Q: quit
-    if (m.key->value.act==GLFW_PRESS) {
-      if (m.key->value.key==GLFW_KEY_BACKSPACE) {
-        lf_set(m.restart, true);
-      } else if (m.key->value.key==GLFW_KEY_Q) {
-        lf_request_stop();
-      }
-    }
-  =}
-  
-
-  reaction(read_state_timer) -> m.read_state {=
-    lf_set(m.read_state, true);
   =}
 
   reaction(m.Ljoint_pos, m.Ljoint_vel, m.Rjoint_pos, m.Rjoint_vel) {=
