@@ -4,11 +4,6 @@
 This repo defines a base reactor and some example derived reactors.
 The [MuJoCoBase](src/lib/MuJoCoBase.lf) reactor provides a single simulator with graphical animation.
 The derived reactors customize this base class for particular MuJoCo model files.
-The MuJoCo menagerie is included as a submodule, so be sure to update submodules:
-
-```
-git submodule update --init --recursive
-```
 
 ## Prerequisites
 
@@ -55,47 +50,6 @@ It has also been reported that you can instead install the MuJoCo.app bundle, th
 If mujoco is installed to a different location the
 [mujoco.cmake](src/include/mujoco.cmake) must be updated accordingly.
 
-## Using this Library Using Lingo
-
-Install the [Lingo package manager](https://github.com/lf-lang/lingo), if you haven't already.
-
-In your project, create Lingo.toml file with contents like the following:
-
-```
-[package]
-name = "<your package name>"
-version = "<your version number>"
-
-[[app]]
-name = "<AppName>"
-main = "src/<AppName>.lf"
-target = "C"
-platform = "Native"
-
-[app.properties]
-
-[dependencies]
-mujoco-c = {version=">=0.1", git="https://github.com/lf-lang/mujoco-c.git", branch="main"}
-```
-
-In your Lingua Franca application, instantiate one of the library reactors. For example, for the
-Frank Emika Panda robot, your `.lf` file should include:
-
-```
-import MuJoCoPanda from <mujoco-c/MuJoCoPanda.lf>
-main reactor {
-  panda = new MuJoCoPanda()
-  ...
-}
-```
-
-Then compile and run your app:
-
-```
-lingo build
-build/bin/<AppName>
-```
-
 ## Library Reactors
 
 * [MuJoCoBase](src/lib/MuJoCoBase.lf): Base class providing navigation of the view and methods to update the scene and advance the simulator. This is not meant to be directly instantiated.
@@ -104,7 +58,6 @@ build/bin/<AppName>
 * [MuJoCoCar](src/lib/MuJoCoCar.lf) extends [MuJoCoAdvance](src/lib/MuJoCoAdvance.lf): Simulator for the [car](src/models/car.xml) basic demo model, providing a two-wheel vehicle and keyboard controlled driving. This version actively controls the simulator advance. 
 * [MuJoCoCarAuto](src/lib/MuJoCoCarAuto.lf) extends [MuJoCoAuto](src/lib/MuJoCoAuto.lf): Simulator for the [car](src/models/car.xml) basic demo model, providing a two-wheel vehicle and keyboard controlled driving. This version lets the simulator advance automatically.
 * [MuJoCoInvertedPendulum.lf](src/lib/MuJoCoInvertedPendulum.lf) extends [MuJoCoAuto](src/lib/MuJoCoAuto.lf): Simple inverted pendulum model.
-* [MuJoCoPanda.lf](src/lib/MuJoCoPanda.lf) extends [MuJoCoAuto](src/lib/MuJoCoAuto.lf): Simulator for a Franka Emika Panda robot.
 
 ## Demos
 
@@ -114,4 +67,24 @@ Build the demos using `lfc` or `make`:
 * [Car](src/Car.lf): Simple drivable car.
 * [CarAuto](src/CarAuto.lf): Simple drivable car.
 * [InvertedPendulum](src/InvertedPendulum.lf): Inverted pendulum demo.
-* [Panda](src/Panda.lf): Franka Emika Panda robot doing gyrations.
+
+# To Use This Library
+
+Clone the repo into your `lf-packages` directory in the root of your project or into
+the directory pointed to by your `LF_PACKAGES` environment variable:
+
+```
+git clone https://github.com/lf-lang/mujoco-c.git
+```
+
+Alternatively, if you are in a git repo, create a submodule:
+
+```
+git submodule add https://github.com/lf-lang/mujoco-c.git
+```
+
+Then import the library reactors. For example:
+
+```
+import MuJoCoAuto from <mujoco-c>
+```

@@ -1,6 +1,0 @@
-[submodule "src/models/mujoco_menagerie"]
-	path = src/models/mujoco_menagerie
-	url = https://github.com/google-deepmind/mujoco_menagerie.git
-[submodule "src/models/trossen_arm_mujoco"]
-	path = src/models/trossen_arm_mujoco
-	url = https://github.com/TrossenRobotics/trossen_arm_mujoco.git
