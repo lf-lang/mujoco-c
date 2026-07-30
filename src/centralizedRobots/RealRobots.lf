@@ -20,6 +20,7 @@ preamble {=
   #define KEY_CODE_Q          81
 =}
 
+// In case of only one robot, refer to either left_port or right_port and remove the other
 reactor RealRobots(
     left_port: string = "/dev/ttyUSB0",
     right_port: string = "/dev/ttyUSB1") {
@@ -65,6 +66,7 @@ reactor RealRobots(
     }
   =}
 
+  //In case of only one robot remove the corresponding inputs for Lmotor or Rmotor and corrsponding outputs as well as left or right state handles.
   input restart: bool
   input read_state: bool
   input[8] Lmotor: double
@@ -81,6 +83,7 @@ reactor RealRobots(
 
   physical action key_pressed: keypress_t
 
+  //In case of only one robot remove the corresponding trossen connection for left or right handle and the corresponding port.
   reaction(startup) {=
     self->left_handle  = trossen_arm_connect(self->left_port);
     self->right_handle = trossen_arm_connect(self->right_port);
@@ -103,6 +106,20 @@ reactor RealRobots(
     // TODO: e.g. Homing, in case of self->connected
   =}
 
+//In case of only one robot uncomment the following code and comment out the reaction in for the two robot scenario. 
+//Also make sure you refer to the correct left or right handle and remove the other one.
+/*  reaction(read_state) -> Ljoint_pos, Ljoint_vel {=
+    if (!read_state->value) return;
+    double lpos[8] = {0}, lvel[8] = {0};
+    if (self->connected) {
+      trossen_arm_read_state(self->left_handle,  lpos, lvel);
+    }
+    for (int i = 0; i < 8; i++) {
+      lf_set(Ljoint_pos[i], lpos[i]);
+      lf_set(Ljoint_vel[i], lvel[i]);
+    }
+  =}
+  */
   reaction(read_state) -> Ljoint_pos, Ljoint_vel, Rjoint_pos, Rjoint_vel {=
     if (!read_state->value) return;
     double lpos[8] = {0}, lvel[8] = {0}, rpos[8] = {0}, rvel[8] = {0};
@@ -118,6 +135,7 @@ reactor RealRobots(
     }
   =}
 
+  //In case of only one robot make sure you refer to the correct left or right handle and remove the other one.
   reaction(Lmotor, Rmotor) {=
     if (self->connected) {
       for (int i = 0; i < 8; i++) {

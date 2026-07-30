@@ -97,8 +97,12 @@ reactor RobotControl(
 
 main reactor CentralizedController(dataset: int = 0){
   timer read_state_timer(0, 500 ms)
+  // Initiate only one of the robots if you want to test with one robot by uncommenting the following line and commenting the other.
+  // m = new RealRobots(left_port = "/dev/ttyUSB0")
   m = new RealRobots(left_port = "/dev/ttyUSB0", right_port = "/dev/ttyUSB1")
   //m = new TwoRobots(frame_period = 33 ms)
+
+  // In case of only one robot comment out cL or CR and the corresponding connections to m.
   cL = new[8] RobotControl(
       dataset=dataset,
       period = 100 ms,
@@ -120,6 +124,8 @@ main reactor CentralizedController(dataset: int = 0){
     lf_print("*** Type q to quit.\n");
   =}
 
+// In case of only one robot comment out the following reaction and uncomment the other one.
+
   reaction(m.key) -> m.restart, cL.restart, cR.restart {=
     // If backspace: reset simulation
     // If q or Q: quit
@@ -136,10 +142,27 @@ main reactor CentralizedController(dataset: int = 0){
     }
   =}
 
+  /*
+  reaction(m.key) -> m.restart, cL.restart {= //or use cR
+    // If backspace: reset simulation
+    // If q or Q: quit
+    if (m.key->value.act==GLFW_PRESS) {
+      if (m.key->value.key==GLFW_KEY_BACKSPACE) {
+        lf_set(m.restart, true);
+        for (int i = 0; i < 8; i++) {
+          lf_set(cL[i].restart, true); //or use cR
+        }
+      } else if (m.key->value.key==GLFW_KEY_Q) {
+        lf_request_stop();
+      }
+    }
+  =}*/
+
   reaction(read_state_timer) -> m.read_state {=
     lf_set(m.read_state, true);
   =}
 
+  // In case of only one robot you can comment out the Ljoint_pos, Ljoint_vel or the Rjoint_pos and Rjoint_vel in the following reaction.
   reaction(m.Ljoint_pos, m.Ljoint_vel, m.Rjoint_pos, m.Rjoint_vel) {=
     lf_print(
         "L qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | R qpos=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | L qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f | R qvel=%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f",
